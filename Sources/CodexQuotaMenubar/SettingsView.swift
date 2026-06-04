@@ -24,6 +24,8 @@ struct SettingsView: View {
                 Text("低额度提醒：\(store.lowThreshold)%")
             }
 
+            Toggle("开机启动", isOn: launchAtLoginBinding)
+
             Picker("数据来源", selection: $store.sourceRaw) {
                 ForEach(QuotaSource.allCases) { source in
                     Text(source.rawValue).tag(source.rawValue)
@@ -56,11 +58,19 @@ struct SettingsView: View {
             }
 
             Section {
-                Text("Codex 登录态模式会读取 ~/.codex/auth.json 并请求 chatgpt.com/backend-api/wham/usage；它不是公开稳定 API。")
+                Text("Codex 登录态模式会读取 ~/.codex/auth.json 并请求 chatgpt.com/backend-api/wham/usage；它不是公开稳定 API。开机启动需要以 .app 形式运行。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
+
+    private var launchAtLoginBinding: Binding<Bool> {
+        Binding {
+            store.launchAtLogin
+        } set: { enabled in
+            store.setLaunchAtLogin(enabled)
         }
     }
 }

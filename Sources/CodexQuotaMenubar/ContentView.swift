@@ -7,7 +7,8 @@ struct ContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
-            detailRows
+            quotaSections
+            summaryRows
             notice
             actions
             footer
@@ -17,6 +18,13 @@ struct ContentView: View {
 
     private var header: some View {
         HStack {
+            QuotaRingsIcon(
+                snapshot: store.snapshot,
+                lowThreshold: store.lowThreshold,
+                isRefreshing: store.isRefreshing
+            )
+            .frame(width: 30, height: 30)
+
             VStack(alignment: .leading, spacing: 4) {
                 Text("Codex 额度")
                     .font(.headline)
@@ -27,17 +35,34 @@ struct ContentView: View {
 
             Spacer()
 
-            Text(percentText)
-                .font(.title2.weight(.semibold))
+            Text(store.level.rawValue)
+                .font(.subheadline.weight(.semibold))
                 .foregroundStyle(store.menuColor)
-                .monospacedDigit()
         }
     }
 
-    private var detailRows: some View {
+    private var quotaSections: some View {
+        VStack(spacing: 10) {
+            QuotaWindowView(
+                window: store.snapshot.fiveHour,
+                level: store.level(for: store.snapshot.fiveHour.percentRemaining),
+                usedText: store.percentText(store.snapshot.fiveHour.percentUsed),
+                remainingText: store.percentText(store.snapshot.fiveHour.percentRemaining),
+                resetText: store.resetText(for: store.snapshot.fiveHour)
+            )
+            QuotaWindowView(
+                window: store.snapshot.weekly,
+                level: store.level(for: store.snapshot.weekly.percentRemaining),
+                usedText: store.percentText(store.snapshot.weekly.percentUsed),
+                remainingText: store.percentText(store.snapshot.weekly.percentRemaining),
+                resetText: store.resetText(for: store.snapshot.weekly)
+            )
+        }
+    }
+
+    private var summaryRows: some View {
         VStack(spacing: 8) {
-            InfoRow(label: "状态", value: store.level.rawValue, valueColor: store.menuColor)
-            InfoRow(label: "预计重置", value: store.resetText)
+            InfoRow(label: "当前瓶颈", value: store.bottleneckText, valueColor: store.menuColor)
             InfoRow(label: "最后刷新", value: store.lastRefreshText)
             InfoRow(label: "数据来源", value: store.snapshot.source.rawValue)
         }
@@ -98,13 +123,6 @@ struct ContentView: View {
         }
     }
 
-    private var percentText: String {
-        guard let percent = store.snapshot.percentRemaining else {
-            return "--"
-        }
-        return "\(percent)%"
-    }
-
     private var noticeText: String {
         if store.level == .critical {
             return "额度可能已接近耗尽。"
@@ -113,6 +131,43 @@ struct ContentView: View {
             return "额度偏低，建议留意后续任务。"
         }
         return "暂未读取到精确额度。"
+    }
+}
+
+private struct QuotaWindowView: View {
+    let window: QuotaWindowSnapshot
+    let level: QuotaLevel
+    let usedText: String
+    let remainingText: String
+    let resetText: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(window.kind.rawValue)
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text(level.rawValue)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(level.color)
+            }
+
+            ProgressView(value: progress)
+                .tint(level.color)
+
+            HStack(alignment: .firstTextBaseline) {
+                LabelValue(label: "已用", value: usedText, valueColor: level.color)
+                LabelValue(label: "剩余", value: remainingText)
+                Spacer()
+                LabelValue(label: "重置", value: resetText)
+            }
+        }
+        .padding(10)
+        .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var progress: Double {
+        Double(window.percentRemaining ?? 0) / 100
     }
 }
 
@@ -131,5 +186,22 @@ private struct InfoRow: View {
                 .multilineTextAlignment(.trailing)
         }
         .font(.subheadline)
+    }
+}
+
+private struct LabelValue: View {
+    let label: String
+    let value: String
+    var valueColor: Color = .primary
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(label)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .foregroundStyle(valueColor)
+                .monospacedDigit()
+        }
+        .font(.caption)
     }
 }

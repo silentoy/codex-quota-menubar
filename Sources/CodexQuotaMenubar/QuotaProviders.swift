@@ -86,33 +86,26 @@ struct CodexAuthUsageProvider: QuotaProviding, Sendable {
         let sessionRemaining = sessionUsed.map { max(0, min(100, 100 - $0)) }
         let weeklyRemaining = weeklyUsed.map { max(0, min(100, 100 - $0)) }
 
-        let displayRemaining: Int?
-        let resetAt: Date?
-        if let sessionRemaining, let weeklyRemaining {
-            if sessionRemaining <= weeklyRemaining {
-                displayRemaining = sessionRemaining
-                resetAt = response.rateLimit?.primaryWindow?.resetDate
-            } else {
-                displayRemaining = weeklyRemaining
-                resetAt = response.rateLimit?.secondaryWindow?.resetDate
-            }
-        } else {
-            displayRemaining = sessionRemaining ?? weeklyRemaining
-            resetAt = response.rateLimit?.primaryWindow?.resetDate ?? response.rateLimit?.secondaryWindow?.resetDate
-        }
-
         let plan = response.planType ?? "unknown"
         let sessionText = sessionRemaining.map { "\($0)%" } ?? "未知"
         let weeklyText = weeklyRemaining.map { "\($0)%" } ?? "未知"
         let detail = "通过 ~/.codex/auth.json 调用 ChatGPT usage 接口。计划：\(plan)，短周期剩余：\(sessionText)，周额度剩余：\(weeklyText)。"
 
         return QuotaSnapshot(
-            percentRemaining: displayRemaining,
-            resetAt: resetAt,
+            fiveHour: QuotaWindowSnapshot(
+                kind: .fiveHour,
+                percentRemaining: sessionRemaining,
+                resetAt: response.rateLimit?.primaryWindow?.resetDate
+            ),
+            weekly: QuotaWindowSnapshot(
+                kind: .weekly,
+                percentRemaining: weeklyRemaining,
+                resetAt: response.rateLimit?.secondaryWindow?.resetDate
+            ),
             source: .codexAuth,
             detail: detail,
             capturedAt: Date(),
-            failed: displayRemaining == nil
+            failed: sessionRemaining == nil && weeklyRemaining == nil
         )
     }
 
@@ -240,12 +233,11 @@ struct ManualProvider: QuotaProviding, Sendable {
     let note: String
 
     func fetch() async -> QuotaSnapshot {
-        QuotaSnapshot(
+        QuotaSnapshot.singleWindow(
             percentRemaining: max(0, min(100, percentRemaining)),
             resetAt: resetAt,
             source: .manual,
             detail: note.isEmpty ? "使用手动填写的额度。" : note,
-            capturedAt: Date(),
             failed: false
         )
     }
@@ -292,12 +284,11 @@ struct LocalCodexProvider: QuotaProviding, Sendable {
 
         for (key, value) in quotaCandidates {
             if let percent = normalizedPercent(value) {
-                return QuotaSnapshot(
+                return QuotaSnapshot.singleWindow(
                     percentRemaining: percent,
                     resetAt: findResetDate(in: flattened),
                     source: .local,
                     detail: "从 \(url.lastPathComponent) 的 \(key) 字段读取。",
-                    capturedAt: Date(),
                     failed: false
                 )
             }

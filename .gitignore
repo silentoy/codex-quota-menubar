@@ -4,3 +4,5 @@ DerivedData/
 *.xcuserstate
 *.xcodeproj/xcuserdata/
 *.xcworkspace/xcuserdata/
+.superpowers/
+dist/

@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import ServiceManagement
 import SwiftUI
 
 @MainActor
@@ -12,6 +13,7 @@ final class QuotaStore: ObservableObject {
     @AppStorage("manualPercent") var manualPercent = 50
     @AppStorage("manualResetAt") var manualResetAt = ""
     @AppStorage("manualNote") var manualNote = ""
+    @AppStorage("launchAtLogin") var launchAtLogin = false
 
     @Published private(set) var snapshot: QuotaSnapshot = .unknown(
         source: .codexAuth,
@@ -44,16 +46,7 @@ final class QuotaStore: ObservableObject {
     }
 
     var level: QuotaLevel {
-        guard let percent = snapshot.percentRemaining else {
-            return .unknown
-        }
-        if percent <= 5 {
-            return .critical
-        }
-        if percent <= lowThreshold {
-            return .low
-        }
-        return .normal
+        level(for: snapshot.percentRemaining)
     }
 
     var menuTitle: String {
@@ -81,10 +74,36 @@ final class QuotaStore: ObservableObject {
     }
 
     var resetText: String {
-        guard let resetAt = snapshot.resetAt else {
-            return "未知"
+        dateText(snapshot.resetAt)
+    }
+
+    var bottleneckText: String {
+        snapshot.bottleneck?.rawValue ?? "未知"
+    }
+
+    func level(for percent: Int?) -> QuotaLevel {
+        guard let percent else { return .unknown }
+        if percent <= 5 {
+            return .critical
         }
-        return Self.dateFormatter.string(from: resetAt)
+        if percent <= lowThreshold {
+            return .low
+        }
+        return .normal
+    }
+
+    func percentText(_ percent: Int?) -> String {
+        percent.map { "\($0)%" } ?? "未知"
+    }
+
+    func resetText(for window: QuotaWindowSnapshot) -> String {
+        dateText(window.resetAt)
+    }
+
+    func accessibilityLabel() -> String {
+        let fiveHourLevel = level(for: snapshot.fiveHour.percentRemaining).rawValue
+        let weeklyLevel = level(for: snapshot.weekly.percentRemaining).rawValue
+        return "Codex 额度，5 小时\(fiveHourLevel)，周额度\(weeklyLevel)"
     }
 
     func updateTimer() {
@@ -156,6 +175,21 @@ final class QuotaStore: ObservableObject {
         NSApp.terminate(nil)
     }
 
+    func setLaunchAtLogin(_ enabled: Bool) {
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+            launchAtLogin = enabled
+            statusMessage = enabled ? "已开启开机启动。" : "已关闭开机启动。"
+        } catch {
+            launchAtLogin = !enabled
+            statusMessage = "开机启动设置失败：\(error.localizedDescription)"
+        }
+    }
+
     private func makeProvider() -> QuotaProviding {
         switch source {
         case .codexAuth:
@@ -169,6 +203,16 @@ final class QuotaStore: ObservableObject {
                 note: manualNote
             )
         }
+    }
+
+    private func dateText(_ date: Date?) -> String {
+        guard let date else {
+            return "未知"
+        }
+        if Calendar.current.component(.year, from: date) == Calendar.current.component(.year, from: Date()) {
+            return Self.sameYearDateFormatter.string(from: date)
+        }
+        return Self.crossYearDateFormatter.string(from: date)
     }
 
     private func startTimer() {
@@ -201,11 +245,17 @@ final class QuotaStore: ObservableObject {
         return formatter
     }()
 
-    private static let dateFormatter: DateFormatter = {
+    private static let sameYearDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "zh_CN")
-        formatter.dateStyle = .short
-        formatter.timeStyle = .short
+        formatter.dateFormat = "M/d HH:mm"
+        return formatter
+    }()
+
+    private static let crossYearDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "yyyy/M/d HH:mm"
         return formatter
     }()
 

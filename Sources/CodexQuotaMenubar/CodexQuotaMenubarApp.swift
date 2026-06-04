@@ -14,8 +14,14 @@ struct CodexQuotaMenubarApp: App {
                     store.refreshIfStale()
                 }
         } label: {
-            Text(store.menuTitle)
-                .foregroundStyle(store.menuColor)
+            Image(nsImage: MenuBarQuotaIcon.image(
+                snapshot: store.snapshot,
+                lowThreshold: store.lowThreshold,
+                isRefreshing: store.isRefreshing
+            ))
+            .resizable()
+            .frame(width: 22, height: 22)
+            .accessibilityLabel(store.accessibilityLabel())
         }
         .menuBarExtraStyle(.window)
 
