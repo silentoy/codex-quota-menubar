@@ -6,70 +6,57 @@
 
 ## 功能
 
-- 顶部栏显示纯双层圆环图标，不显示文字和百分值
-- 外圈表示 5 小时额度，内圈表示周额度，圆环高亮部分表示剩余额度
-- 点击顶部栏查看两个额度的剩余百分比、状态、预计重置、最后刷新、数据来源
-- 支持手动刷新、自动刷新和睡眠恢复刷新
-- 支持 Codex 登录态、本机状态与手动填写三种数据源
-- 支持设置开机启动
-- 默认读取 `~/.codex/auth.json` 并请求 ChatGPT usage 接口获取真实额度
+- **灵活的菜单栏显示**：支持“圆环（仅双层圆环）”与“百分比（仅文本，如 `Codex 80%`）”两种模式，可在设置中自由切换。
+  - 在圆环模式下，外圈表示 5 小时额度，内圈表示周额度，高亮部分表示剩余比例。
+- **直观的数据面板**：点击菜单栏图标展示下拉面板，分开展示 5 小时额度和周额度的已用、剩余百分比、当前状态与重置时间。
+- **智能刷新机制**：支持手动刷新、定时自动刷新和系统睡眠唤醒后的自动恢复刷新。
+- **低额度分段提醒**：支持 10%、20%、30%、40%、50% 五档自定义低额度状态提醒。
+- **无签名开机自启**：支持一键开启/关闭开机自启（基于 LaunchAgent 实现，未签名的 `.app` 构建产物也可直接使用）。
 
 ## 使用步骤
 
-1. 构建项目：
+### 1. 构建项目
 
-   ```bash
-   swift build
-   ```
+```bash
+swift build -c release
+```
 
-2. 运行菜单栏工具：
+### 2. 运行菜单栏工具
 
-   ```bash
-   swift run CodexQuotaMenubar
-   ```
+```bash
+swift run -c release CodexQuotaMenubar
+```
 
-3. 顶部栏出现 `Codex ...` 后，等待刷新完成。
-
-成功标志：mac 顶部栏出现双层圆环图标；如果登录态不可用或接口失败，会显示灰色空心双环，点击后能看到失败原因。
+成功标志：mac 顶部栏出现对应的圆环图标或百分比文本。如果登录态不可用或请求失败，会显示置灰状态，点击能看到失败原因。
 
 ## 安装为 App
 
-1. 生成 `.app`：
+为了日常稳定使用与支持开机自启，推荐将其打包为 `.app` 应用：
+
+1. **生成 `.app` 包**：
 
    ```bash
    scripts/build-app.sh
    ```
 
-2. 打开构建产物：
+2. **复制到应用程序目录**：
 
-   ```bash
-   open "dist/Codex Quota Menubar.app"
-   ```
+   将生成的 `dist/Codex Quota Menubar.app` 拖入系统的 `/Applications`（应用程序）目录。
 
-3. 如果确认可用，可以把 `dist/Codex Quota Menubar.app` 拖到 `/Applications`。
-
-成功标志：mac 顶部栏出现一个双层圆环图标；点击后能看到 5 小时额度和周额度。
-
-说明：当前 App 未签名、未公证，只建议在自己的机器上使用。开机启动需要以 `.app` 形式运行，`swift run` 开发态下可能不可用。
+3. **运行与开机启动**：
+   - 首次运行时在 `/Applications` 中**右键 -> 打开**（绕过系统未签名公证的安全提示）。
+   - 打开后在设置页面勾选“开机启动”即可。
+   
+   成功标志：系统 `~/Library/LaunchAgents/` 下会生成对应的 plist 引导文件，开机后自动拉起。
 
 ## 数据源说明
 
-默认的 Codex 登录态模式会：
+默认情况下，本工具会自动读取并解析 Codex 登录态：
 
 - 读取 `~/.codex/auth.json` 中的 ChatGPT OAuth token
-- 请求 `https://chatgpt.com/backend-api/wham/usage`
-- 解析 `primary_window` 和 `secondary_window` 的 `used_percent`
-- 将 `primary_window` 映射为 5 小时额度
-- 将 `secondary_window` 映射为周额度
-- 顶部栏外圈表示 5 小时额度，内圈表示周额度，圆环高亮部分表示剩余额度
+- 请求 `https://chatgpt.com/backend-api/wham/usage` 获取额度使用状况
+- 解析 `primary_window` 映射为 5 小时额度，将 `secondary_window` 映射为周额度
+- 自动根据剩余额度切换不同颜色（正常绿色、偏低橙色、接近耗尽红色）
 
-风险提示：这个接口不是公开稳定的 OpenAI Platform API，可能随 Codex/ChatGPT 后端变更而失效；请只在你信任本工具时使用。
+**风险提示**：本工具请求的 usage 接口为 ChatGPT 网页端后端接口，非 OpenAI Platform 开放接口。该接口可能随着官方网站的更新而失效，请在信任本工具的情况下使用。
 
-本机状态模式只读取少量非敏感 Codex 状态文件，例如：
-
-- `~/.codex/.codex-global-state.json`
-- `~/.codex/version.json`
-
-如果这些文件里没有公开额度字段，工具会显示 `Codex --`，并提示未发现精确额度。
-
-如果你想先有稳定展示效果，可以在设置里切换到“手动填写”，输入剩余百分比和预计重置时间。
