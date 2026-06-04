@@ -10,8 +10,8 @@ enum QuotaSource: String, CaseIterable, Identifiable, Sendable {
 }
 
 enum DisplayMode: String, CaseIterable, Identifiable, Sendable {
+    case ring = "圆环"
     case percentage = "百分比"
-    case shortStatus = "简短状态"
 
     var id: String { rawValue }
 }

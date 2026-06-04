@@ -1,19 +1,36 @@
 import AppKit
 import Foundation
-import ServiceManagement
 import SwiftUI
 
 @MainActor
 final class QuotaStore: ObservableObject {
-    @AppStorage("refreshIntervalMinutes") var refreshIntervalMinutes = 10
-    @AppStorage("displayMode") var displayModeRaw = DisplayMode.percentage.rawValue
-    @AppStorage("lowThreshold") var lowThreshold = 20
-    @AppStorage("source") var sourceRaw = QuotaSource.codexAuth.rawValue
-    @AppStorage("didDefaultCodexAuthSource") private var didDefaultCodexAuthSource = false
-    @AppStorage("manualPercent") var manualPercent = 50
-    @AppStorage("manualResetAt") var manualResetAt = ""
-    @AppStorage("manualNote") var manualNote = ""
-    @AppStorage("launchAtLogin") var launchAtLogin = false
+    @AppStorage("refreshIntervalMinutes") var refreshIntervalMinutes = 10 {
+        willSet { objectWillChange.send() }
+    }
+    @AppStorage("displayMode") var displayModeRaw = DisplayMode.ring.rawValue {
+        willSet { objectWillChange.send() }
+    }
+    @AppStorage("lowThreshold") var lowThreshold = 20 {
+        willSet { objectWillChange.send() }
+    }
+    @AppStorage("source") var sourceRaw = QuotaSource.codexAuth.rawValue {
+        willSet { objectWillChange.send() }
+    }
+    @AppStorage("didDefaultCodexAuthSource") private var didDefaultCodexAuthSource = false {
+        willSet { objectWillChange.send() }
+    }
+    @AppStorage("manualPercent") var manualPercent = 50 {
+        willSet { objectWillChange.send() }
+    }
+    @AppStorage("manualResetAt") var manualResetAt = "" {
+        willSet { objectWillChange.send() }
+    }
+    @AppStorage("manualNote") var manualNote = "" {
+        willSet { objectWillChange.send() }
+    }
+    @AppStorage("launchAtLogin") var launchAtLogin = false {
+        willSet { objectWillChange.send() }
+    }
 
     @Published private(set) var snapshot: QuotaSnapshot = .unknown(
         source: .codexAuth,
@@ -38,11 +55,12 @@ final class QuotaStore: ObservableObject {
     }
 
     var source: QuotaSource {
-        QuotaSource(rawValue: sourceRaw) ?? .local
+        // 固定为 Codex 登录态，不再允许用户切换
+        .codexAuth
     }
 
     var displayMode: DisplayMode {
-        DisplayMode(rawValue: displayModeRaw) ?? .percentage
+        DisplayMode(rawValue: displayModeRaw) ?? .ring
     }
 
     var level: QuotaLevel {
@@ -55,13 +73,13 @@ final class QuotaStore: ObservableObject {
         }
 
         switch displayMode {
+        case .ring:
+            return ""
         case .percentage:
             if let percent = snapshot.percentRemaining {
                 return "Codex \(percent)%"
             }
             return "Codex --"
-        case .shortStatus:
-            return "Codex \(level.rawValue)"
         }
     }
 
@@ -175,34 +193,63 @@ final class QuotaStore: ObservableObject {
         NSApp.terminate(nil)
     }
 
-    func setLaunchAtLogin(_ enabled: Bool) {
-        do {
-            if enabled {
-                try SMAppService.mainApp.register()
-            } else {
-                try SMAppService.mainApp.unregister()
-            }
-            launchAtLogin = enabled
-            statusMessage = enabled ? "已开启开机启动。" : "已关闭开机启动。"
-        } catch {
-            launchAtLogin = !enabled
-            statusMessage = "开机启动设置失败：\(error.localizedDescription)"
+    func syncLaunchAtLoginState() {
+        let plistPath = launchAgentPlistPath
+        let exists = FileManager.default.fileExists(atPath: plistPath)
+        if launchAtLogin != exists {
+            launchAtLogin = exists
         }
     }
 
-    private func makeProvider() -> QuotaProviding {
-        switch source {
-        case .codexAuth:
-            return CodexAuthUsageProvider()
-        case .local:
-            return LocalCodexProvider()
-        case .manual:
-            return ManualProvider(
-                percentRemaining: manualPercent,
-                resetAt: Self.isoFormatter.date(from: manualResetAt),
-                note: manualNote
-            )
+    func setLaunchAtLogin(_ enabled: Bool) {
+        let plistPath = launchAgentPlistPath
+        let fm = FileManager.default
+
+        if enabled {
+            guard let appPath = Bundle.main.bundlePath as String?,
+                  appPath.hasSuffix(".app") else {
+                launchAtLogin = false
+                statusMessage = "开机启动需以 .app 形式运行。"
+                return
+            }
+
+            let launchAgentsDir = (NSHomeDirectory() as NSString).appendingPathComponent("Library/LaunchAgents")
+            try? fm.createDirectory(atPath: launchAgentsDir, withIntermediateDirectories: true)
+
+            let plist: [String: Any] = [
+                "Label": launchAgentLabel,
+                "ProgramArguments": ["\(appPath)/Contents/MacOS/CodexQuotaMenubar"],
+                "RunAtLoad": true,
+                "KeepAlive": false,
+            ]
+
+            let data = try? PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+            if let data, fm.createFile(atPath: plistPath, contents: data) {
+                launchAtLogin = true
+                statusMessage = "已开启开机启动。"
+            } else {
+                launchAtLogin = false
+                statusMessage = "写入 LaunchAgent 失败。"
+            }
+        } else {
+            try? fm.removeItem(atPath: plistPath)
+            launchAtLogin = false
+            statusMessage = "已关闭开机启动。"
         }
+    }
+
+    private var launchAgentLabel: String {
+        "com.qihui.codex-quota-menubar"
+    }
+
+    private var launchAgentPlistPath: String {
+        let home = NSHomeDirectory()
+        return "\(home)/Library/LaunchAgents/\(launchAgentLabel).plist"
+    }
+
+    private func makeProvider() -> QuotaProviding {
+        // 固定使用 Codex 登录态 provider
+        CodexAuthUsageProvider()
     }
 
     private func dateText(_ date: Date?) -> String {

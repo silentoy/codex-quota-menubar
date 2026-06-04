@@ -14,22 +14,26 @@ struct CodexQuotaMenubarApp: App {
                     store.refreshIfStale()
                 }
         } label: {
-            Image(nsImage: MenuBarQuotaIcon.image(
-                snapshot: store.snapshot,
-                lowThreshold: store.lowThreshold,
-                isRefreshing: store.isRefreshing
-            ))
-            .resizable()
-            .frame(width: 22, height: 22)
-            .accessibilityLabel(store.accessibilityLabel())
+            if store.displayMode == .ring {
+                Image(nsImage: MenuBarQuotaIcon.image(
+                    snapshot: store.snapshot,
+                    lowThreshold: store.lowThreshold,
+                    isRefreshing: store.isRefreshing
+                ))
+                .resizable()
+                .frame(width: 22, height: 22)
+                .accessibilityLabel(store.accessibilityLabel())
+            } else {
+                Text(store.menuTitle)
+                    .accessibilityLabel(store.accessibilityLabel())
+            }
         }
         .menuBarExtraStyle(.window)
 
         Settings {
             SettingsView()
                 .environmentObject(store)
-                .frame(width: 360)
-                .padding()
+                .frame(width: 420)
         }
     }
 }
