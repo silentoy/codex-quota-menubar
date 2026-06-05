@@ -18,30 +18,35 @@ struct CodexAuthUsageProvider: QuotaProviding, Sendable {
         do {
             let auth = try readAuthFile()
             guard var accessToken = auth.tokens?.accessToken else {
-                return .unknown(source: .codexAuth, detail: "auth.json 中没有 ChatGPT access_token。", failed: true)
+                throw CodexAuthUsageError.missingAccessToken
             }
 
             if isTokenExpired(accessToken), let refreshToken = auth.tokens?.refreshToken {
                 accessToken = try await refreshAccessToken(refreshToken)
+            } else if isTokenExpired(accessToken) {
+                throw CodexAuthUsageError.tokenRefreshFailed
             }
 
-            let response = try await fetchUsage(accessToken: accessToken, accountID: accountID(from: auth))
-            return snapshot(from: response)
+            let data = try await fetchUsage(accessToken: accessToken, accountID: accountID(from: auth))
+            return try Self.snapshot(fromUsageData: data)
         } catch {
             return .unknown(
                 source: .codexAuth,
-                detail: "读取 Codex 登录态失败：\(error.localizedDescription)。",
+                detail: "读取 Codex 登录态失败：\(error.localizedDescription)",
                 failed: true
             )
         }
     }
 
     private func readAuthFile() throws -> CodexAuthFile {
+        guard FileManager.default.fileExists(atPath: authURL.path) else {
+            throw CodexAuthUsageError.authFileMissing(authURL.path)
+        }
         let data = try Data(contentsOf: authURL)
         return try JSONDecoder().decode(CodexAuthFile.self, from: data)
     }
 
-    private func fetchUsage(accessToken: String, accountID: String?) async throws -> CodexUsageResponse {
+    private func fetchUsage(accessToken: String, accountID: String?) async throws -> Data {
         var request = URLRequest(url: usageURL)
         request.httpMethod = "GET"
         request.addValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
@@ -58,7 +63,7 @@ struct CodexAuthUsageProvider: QuotaProviding, Sendable {
             throw CodexAuthUsageError.httpError(http.statusCode)
         }
 
-        return try JSONDecoder().decode(CodexUsageResponse.self, from: data)
+        return data
     }
 
     private func refreshAccessToken(_ refreshToken: String) async throws -> String {
@@ -80,7 +85,17 @@ struct CodexAuthUsageProvider: QuotaProviding, Sendable {
         return decoded.accessToken
     }
 
-    private func snapshot(from response: CodexUsageResponse) -> QuotaSnapshot {
+    static func snapshot(fromUsageData data: Data, capturedAt: Date = Date()) throws -> QuotaSnapshot {
+        let response: CodexUsageResponse
+        do {
+            response = try JSONDecoder().decode(CodexUsageResponse.self, from: data)
+        } catch {
+            throw CodexAuthUsageError.decodeFailed
+        }
+        return snapshot(from: response, capturedAt: capturedAt)
+    }
+
+    private static func snapshot(from response: CodexUsageResponse, capturedAt: Date) -> QuotaSnapshot {
         let sessionUsed = response.rateLimit?.primaryWindow?.usedPercent
         let weeklyUsed = response.rateLimit?.secondaryWindow?.usedPercent
         let sessionRemaining = sessionUsed.map { max(0, min(100, 100 - $0)) }
@@ -89,7 +104,13 @@ struct CodexAuthUsageProvider: QuotaProviding, Sendable {
         let plan = response.planType ?? "unknown"
         let sessionText = sessionRemaining.map { "\($0)%" } ?? "未知"
         let weeklyText = weeklyRemaining.map { "\($0)%" } ?? "未知"
-        let detail = "通过 ~/.codex/auth.json 调用 ChatGPT usage 接口。计划：\(plan)，短周期剩余：\(sessionText)，周额度剩余：\(weeklyText)。"
+        let failed = sessionRemaining == nil && weeklyRemaining == nil
+        let detail: String
+        if failed {
+            detail = "ChatGPT usage 接口结构可能已变化，未读取到 primary_window 或 secondary_window。计划：\(plan)。"
+        } else {
+            detail = "通过 ~/.codex/auth.json 调用 ChatGPT usage 接口。计划：\(plan)，短周期剩余：\(sessionText)，周额度剩余：\(weeklyText)。"
+        }
 
         return QuotaSnapshot(
             fiveHour: QuotaWindowSnapshot(
@@ -104,8 +125,8 @@ struct CodexAuthUsageProvider: QuotaProviding, Sendable {
             ),
             source: .codexAuth,
             detail: detail,
-            capturedAt: Date(),
-            failed: sessionRemaining == nil && weeklyRemaining == nil
+            capturedAt: capturedAt,
+            failed: failed
         )
     }
 
@@ -211,18 +232,27 @@ private struct CodexTokenRefreshResponse: Codable, Sendable {
 }
 
 private enum CodexAuthUsageError: LocalizedError {
+    case authFileMissing(String)
+    case missingAccessToken
+    case decodeFailed
     case invalidResponse
     case httpError(Int)
     case tokenRefreshFailed
 
     var errorDescription: String? {
         switch self {
+        case .authFileMissing(let path):
+            return "未找到 \(path)，请先打开 Codex 完成登录。"
+        case .missingAccessToken:
+            return "auth.json 中没有 ChatGPT access_token，请重新登录 Codex。"
+        case .decodeFailed:
+            return "ChatGPT usage 接口响应解析失败，接口结构可能已变化。"
         case .invalidResponse:
-            return "ChatGPT usage 接口返回格式无效"
+            return "ChatGPT usage 接口返回格式无效。"
         case .httpError(let status):
-            return "ChatGPT usage 接口 HTTP \(status)"
+            return "ChatGPT usage 接口 HTTP \(status)。"
         case .tokenRefreshFailed:
-            return "刷新 Codex access_token 失败"
+            return "Codex access_token 已过期，刷新失败，请重新登录 Codex。"
         }
     }
 }

@@ -4,7 +4,15 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 APP_NAME="Codex Quota Menubar"
 BUNDLE_ID="com.qihui.codex-quota-menubar"
-VERSION="1.2.0"
+VERSION_FILE="$ROOT_DIR/VERSION"
+VERSION="${1:-}"
+if [[ -z "$VERSION" ]]; then
+  if [[ -f "$VERSION_FILE" ]]; then
+    VERSION="$(tr -d '[:space:]' < "$VERSION_FILE")"
+  else
+    VERSION="1.3.0"
+  fi
+fi
 BUILD_DIR="$ROOT_DIR/.build/release"
 DIST_DIR="$ROOT_DIR/dist"
 APP_DIR="$DIST_DIR/$APP_NAME.app"
@@ -56,5 +64,11 @@ cat > "$CONTENTS_DIR/Info.plist" <<EOF
 </dict>
 </plist>
 EOF
+
+test -x "$MACOS_DIR/CodexQuotaMenubar"
+test -f "$CONTENTS_DIR/Info.plist"
+test -f "$RESOURCES_DIR/AppIcon.icns"
+/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$CONTENTS_DIR/Info.plist" | grep -qx "$VERSION"
+/usr/libexec/PlistBuddy -c "Print :LSUIElement" "$CONTENTS_DIR/Info.plist" | grep -qx "true"
 
 echo "Built $APP_DIR"
