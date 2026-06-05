@@ -10,6 +10,9 @@ final class QuotaStore: ObservableObject {
     @AppStorage("displayMode") var displayModeRaw = DisplayMode.ring.rawValue {
         willSet { objectWillChange.send() }
     }
+    @AppStorage("bottleneckMode") var bottleneckModeRaw = BottleneckMode.percentage.rawValue {
+        willSet { objectWillChange.send() }
+    }
     @AppStorage("lowThreshold") var lowThreshold = 20 {
         willSet { objectWillChange.send() }
     }
@@ -46,24 +49,53 @@ final class QuotaStore: ObservableObject {
     @AppStorage("telegramNotifiedResetIDs") private var telegramNotifiedResetIDsRaw = "" {
         willSet { objectWillChange.send() }
     }
+    @AppStorage("barkEnabled") var barkEnabled = false {
+        willSet { objectWillChange.send() }
+    }
+    @AppStorage("barkServerURL") var barkServerURL = "https://api.day.app" {
+        willSet { objectWillChange.send() }
+    }
+    @AppStorage("barkNotifyFiveHourReset") var barkNotifyFiveHourReset = true {
+        willSet { objectWillChange.send() }
+    }
+    @AppStorage("barkNotifyWeeklyReset") var barkNotifyWeeklyReset = true {
+        willSet { objectWillChange.send() }
+    }
+    @AppStorage("barkNotifiedResetIDs") private var barkNotifiedResetIDsRaw = "" {
+        willSet { objectWillChange.send() }
+    }
+    @AppStorage("quotaHistoryRecords") private var quotaHistoryRecordsRaw = "" {
+        willSet { objectWillChange.send() }
+    }
 
     @Published private(set) var snapshot: QuotaSnapshot = .unknown(
         source: .codexAuth,
         detail: "等待首次刷新。"
     )
+    @Published private(set) var bottleneckEvaluation = QuotaBottleneckEvaluator.evaluate(
+        snapshot: .unknown(source: .codexAuth, detail: "等待首次刷新。"),
+        historyRecords: [],
+        mode: .percentage
+    )
     @Published private(set) var isRefreshing = false
     @Published private(set) var isSendingTelegramTest = false
+    @Published private(set) var isSendingBarkTest = false
     @Published private(set) var statusMessage = "等待首次刷新。"
     @Published var telegramBotToken = "" {
+        willSet { objectWillChange.send() }
+    }
+    @Published var barkDeviceKey = "" {
         willSet { objectWillChange.send() }
     }
 
     private var timer: Timer?
     private var lastManualRefreshAt: Date?
     private let telegramNotifier = TelegramNotifier()
+    private let barkNotifier = BarkNotifier()
 
     init() {
         telegramBotToken = KeychainTokenStore.loadTelegramBotToken()
+        barkDeviceKey = KeychainTokenStore.loadBarkDeviceKey()
         if !didDefaultCodexAuthSource {
             sourceRaw = QuotaSource.codexAuth.rawValue
             didDefaultCodexAuthSource = true
@@ -82,6 +114,10 @@ final class QuotaStore: ObservableObject {
 
     var displayMode: DisplayMode {
         DisplayMode(rawValue: displayModeRaw) ?? .ring
+    }
+
+    var bottleneckMode: BottleneckMode {
+        BottleneckMode(rawValue: bottleneckModeRaw) ?? .percentage
     }
 
     var level: QuotaLevel {
@@ -113,18 +149,30 @@ final class QuotaStore: ObservableObject {
     }
 
     var resetText: String {
-        QuotaResetDateFormatter.text(for: snapshot.resetAt, kind: snapshot.bottleneck ?? .fiveHour)
+        QuotaResetDateFormatter.text(for: bottleneckEvaluation.resetAt, kind: bottleneck ?? .fiveHour)
+    }
+
+    var bottleneckWindows: [QuotaWindowKind] {
+        bottleneckEvaluation.windows
+    }
+
+    var bottleneck: QuotaWindowKind? {
+        bottleneckWindows.count == 1 ? bottleneckWindows.first : nil
     }
 
     var bottleneckText: String {
-        snapshot.bottleneckText
+        bottleneckEvaluation.text
+    }
+
+    var bottleneckExplanation: String {
+        bottleneckEvaluation.explanation
     }
 
     var bottleneckSummaryText: String {
-        guard let percent = snapshot.bottleneckRemainingPercent else {
+        guard let percent = bottleneckEvaluation.remainingPercent else {
             return "暂未读取到精确额度。"
         }
-        return "\(snapshot.bottleneckText) · 剩余 \(percent)% · \(resetText)"
+        return "\(bottleneckText) · 剩余 \(percent)% · \(resetText)"
     }
 
     func level(for percent: Int?) -> QuotaLevel {
@@ -181,6 +229,8 @@ final class QuotaStore: ObservableObject {
             statusMessage = "读取失败，显示上次结果。"
         } else {
             snapshot = result
+            rememberHistoryIfNeeded(result)
+            updateBottleneckEvaluation()
             if result.failed {
                 statusMessage = "读取失败。"
             } else if result.percentRemaining == nil {
@@ -206,12 +256,33 @@ final class QuotaStore: ObservableObject {
         }
     }
 
+    func saveBarkDeviceKey(_ deviceKey: String) {
+        barkDeviceKey = deviceKey
+        do {
+            try KeychainTokenStore.saveBarkDeviceKey(deviceKey)
+        } catch {
+            statusMessage = "保存 Bark Device Key 失败。"
+        }
+    }
+
     func sendTelegramTestMessage() {
         guard !isSendingTelegramTest else { return }
         isSendingTelegramTest = true
         Task {
             _ = await sendTelegramMessage("Codex Quota Telegram 测试消息。")
             isSendingTelegramTest = false
+        }
+    }
+
+    func sendBarkTestMessage() {
+        guard !isSendingBarkTest else { return }
+        isSendingBarkTest = true
+        Task {
+            _ = await sendBarkMessage(
+                title: "Codex 额度提醒",
+                body: "Bark 测试消息\n如果你看到这条通知，说明推送已配置成功。"
+            )
+            isSendingBarkTest = false
         }
     }
 
@@ -296,13 +367,67 @@ final class QuotaStore: ObservableObject {
         CodexAuthUsageProvider()
     }
 
+    private var historyRecords: [QuotaHistoryRecord] {
+        get {
+            guard let data = quotaHistoryRecordsRaw.data(using: .utf8),
+                  let records = try? JSONDecoder().decode([QuotaHistoryRecord].self, from: data) else {
+                return []
+            }
+            return records
+        }
+        set {
+            guard let data = try? JSONEncoder().encode(newValue),
+                  let raw = String(data: data, encoding: .utf8) else {
+                return
+            }
+            quotaHistoryRecordsRaw = raw
+        }
+    }
+
+    private func rememberHistoryIfNeeded(_ snapshot: QuotaSnapshot) {
+        guard !snapshot.failed,
+              snapshot.fiveHour.percentRemaining != nil || snapshot.weekly.percentRemaining != nil else {
+            return
+        }
+
+        var records = historyRecords
+        records.append(
+            QuotaHistoryRecord(
+                fiveHourPercentRemaining: snapshot.fiveHour.percentRemaining,
+                weeklyPercentRemaining: snapshot.weekly.percentRemaining,
+                capturedAt: snapshot.capturedAt
+            )
+        )
+
+        let cutoff = Date().addingTimeInterval(-24 * 3600)
+        historyRecords = Array(
+            records
+                .filter { $0.capturedAt >= cutoff }
+                .sorted { $0.capturedAt < $1.capturedAt }
+                .suffix(50)
+        )
+    }
+
+    func updateBottleneckEvaluation() {
+        bottleneckEvaluation = QuotaBottleneckEvaluator.evaluate(
+            snapshot: snapshot,
+            historyRecords: historyRecords,
+            mode: bottleneckMode
+        )
+    }
+
     private func sendQuotaResetNotifications(previous: QuotaSnapshot, current: QuotaSnapshot) async {
+        await sendTelegramQuotaResetNotifications(previous: previous, current: current)
+        await sendBarkQuotaResetNotifications(previous: previous, current: current)
+    }
+
+    private func sendTelegramQuotaResetNotifications(previous: QuotaSnapshot, current: QuotaSnapshot) async {
         guard telegramEnabled else { return }
 
         let events = QuotaResetNotificationDetector.events(
             previous: previous,
             current: current,
-            notifiedResetIDs: notifiedResetIDs
+            notifiedResetIDs: telegramNotifiedResetIDs
         )
         let enabledEvents = events.filter { event in
             switch event.kind {
@@ -316,7 +441,35 @@ final class QuotaStore: ObservableObject {
 
         for event in enabledEvents {
             if await sendTelegramMessage(event.message) {
-                rememberNotifiedResetID(event.resetID)
+                rememberTelegramNotifiedResetID(event.resetID)
+            }
+        }
+    }
+
+    private func sendBarkQuotaResetNotifications(previous: QuotaSnapshot, current: QuotaSnapshot) async {
+        guard barkEnabled else { return }
+
+        let events = QuotaResetNotificationDetector.events(
+            previous: previous,
+            current: current,
+            notifiedResetIDs: barkNotifiedResetIDs
+        )
+        let enabledEvents = events.filter { event in
+            switch event.kind {
+            case .fiveHour:
+                return barkNotifyFiveHourReset
+            case .weekly:
+                return barkNotifyWeeklyReset
+            }
+        }
+        guard !enabledEvents.isEmpty else { return }
+
+        for event in enabledEvents {
+            if await sendBarkMessage(
+                title: event.barkTitle,
+                body: event.barkBody(companion: barkCompanionWindow(for: event, current: current))
+            ) {
+                rememberBarkNotifiedResetID(event.resetID)
             }
         }
     }
@@ -338,14 +491,57 @@ final class QuotaStore: ObservableObject {
         return false
     }
 
-    private var notifiedResetIDs: Set<String> {
+    private func sendBarkMessage(title: String, body: String) async -> Bool {
+        do {
+            try await barkNotifier.send(
+                serverURL: barkServerURL,
+                deviceKey: barkDeviceKey,
+                title: title,
+                body: body
+            )
+            statusMessage = "已发送 Bark 通知。"
+            return true
+        } catch BarkNotificationError.missingConfiguration {
+            statusMessage = "请先填写 Bark Server URL 和 Device Key。"
+        } catch BarkNotificationError.invalidServerURL {
+            statusMessage = "Bark Server URL 无效。"
+        } catch BarkNotificationError.apiError(let message) {
+            statusMessage = "Bark 通知发送失败：\(message)"
+        } catch BarkNotificationError.httpError(let statusCode) {
+            statusMessage = "Bark 通知发送失败：HTTP \(statusCode)。"
+        } catch {
+            statusMessage = "Bark 通知发送失败。"
+        }
+        return false
+    }
+
+    private func barkCompanionWindow(for event: QuotaResetNotificationEvent, current: QuotaSnapshot) -> QuotaWindowSnapshot {
+        switch event.kind {
+        case .fiveHour:
+            return current.weekly
+        case .weekly:
+            return current.fiveHour
+        }
+    }
+
+    private var telegramNotifiedResetIDs: Set<String> {
         Set(telegramNotifiedResetIDsRaw.split(separator: "\n").map(String.init))
     }
 
-    private func rememberNotifiedResetID(_ resetID: String) {
-        var ids = Array(notifiedResetIDs)
+    private var barkNotifiedResetIDs: Set<String> {
+        Set(barkNotifiedResetIDsRaw.split(separator: "\n").map(String.init))
+    }
+
+    private func rememberTelegramNotifiedResetID(_ resetID: String) {
+        var ids = Array(telegramNotifiedResetIDs)
         ids.append(resetID)
         telegramNotifiedResetIDsRaw = ids.suffix(50).joined(separator: "\n")
+    }
+
+    private func rememberBarkNotifiedResetID(_ resetID: String) {
+        var ids = Array(barkNotifiedResetIDs)
+        ids.append(resetID)
+        barkNotifiedResetIDsRaw = ids.suffix(50).joined(separator: "\n")
     }
 
     private func startTimer() {

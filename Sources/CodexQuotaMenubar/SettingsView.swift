@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct SettingsView: View {
@@ -23,6 +24,15 @@ struct SettingsView: View {
                     ForEach(DisplayMode.allCases) { mode in
                         Text(mode.rawValue).tag(mode.rawValue)
                     }
+                }
+
+                Picker("瓶颈判断方式", selection: $store.bottleneckModeRaw) {
+                    ForEach(BottleneckMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode.rawValue)
+                    }
+                }
+                .onChange(of: store.bottleneckModeRaw) {
+                    store.updateBottleneckEvaluation()
                 }
 
                 Toggle("开机启动", isOn: launchAtLoginBinding)
@@ -71,6 +81,39 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            Section("Bark 推送") {
+                Toggle("启用 Bark 推送", isOn: $store.barkEnabled)
+
+                TextField("Server URL", text: $store.barkServerURL)
+                    .textContentType(.URL)
+
+                SecureField("Device Key", text: barkDeviceKeyBinding)
+                    .textContentType(.password)
+
+                Toggle("5 小时额度重置提醒", isOn: $store.barkNotifyFiveHourReset)
+                Toggle("周额度重置提醒", isOn: $store.barkNotifyWeeklyReset)
+
+                Button {
+                    store.sendBarkTestMessage()
+                } label: {
+                    if store.isSendingBarkTest {
+                        HStack {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("发送中")
+                        }
+                    } else {
+                        Label("发送测试消息", systemImage: "paperplane")
+                    }
+                }
+                .disabled(store.isSendingBarkTest)
+
+                Text("Device Key 保存在 macOS Keychain；默认使用 https://api.day.app，也可填写自建 Bark Server。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Section {
                 Text("通过 ~/.codex/auth.json 读取登录态数据。\n开机启动需以 .app 形式运行。")
                     .font(.caption)
@@ -82,6 +125,10 @@ struct SettingsView: View {
         .scrollIndicators(.hidden)
         .onAppear {
             store.syncLaunchAtLoginState()
+            NSApp.activate(ignoringOtherApps: true)
+            NSApp.windows
+                .filter(\.canBecomeKey)
+                .forEach { $0.makeKeyAndOrderFront(nil) }
         }
     }
 
@@ -148,6 +195,14 @@ struct SettingsView: View {
             store.telegramBotToken
         } set: { token in
             store.saveTelegramBotToken(token)
+        }
+    }
+
+    private var barkDeviceKeyBinding: Binding<String> {
+        Binding {
+            store.barkDeviceKey
+        } set: { deviceKey in
+            store.saveBarkDeviceKey(deviceKey)
         }
     }
 

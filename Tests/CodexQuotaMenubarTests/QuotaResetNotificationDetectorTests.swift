@@ -18,7 +18,17 @@ struct QuotaResetNotificationDetectorTests {
         #expect(events.count == 1)
         #expect(events.first?.kind == .fiveHour)
         #expect(events.first?.reason == .scheduled)
-        #expect(events.first?.message == "Codex 5 小时额度已到期重置，当前剩余 100%。")
+        #expect(events.first?.message == """
+        ✅ *Codex 5 小时额度已到期重置*
+        📊 当前剩余：`100%`
+        ⏰ 下次重置：`2027/1/15 21:00`
+        """)
+        #expect(events.first?.barkTitle == "Codex 5 小时额度已重置")
+        #expect(events.first?.barkBody(companion: window(.weekly, 60, nil)) == """
+        当前剩余：100%
+        周额度：60%
+        重置原因：到期重置
+        """)
     }
 
     @Test func detectsEarlyLargeRecoveryAsSuspectedProviderAdjustment() {
@@ -35,7 +45,17 @@ struct QuotaResetNotificationDetectorTests {
         #expect(events.count == 1)
         #expect(events.first?.kind == .fiveHour)
         #expect(events.first?.reason == .suspectedProviderAdjustment)
-        #expect(events.first?.message == "Codex 5 小时额度疑似由服务商调整，当前剩余 95%。")
+        #expect(events.first?.message == """
+        🔄 *Codex 5 小时额度疑似由服务商调整*
+        📊 当前剩余：`95%`
+        ⏰ 下次重置：`2027/1/15 16:00`
+        """)
+        #expect(events.first?.barkTitle == "Codex 5 小时额度已恢复")
+        #expect(events.first?.barkBody(companion: window(.weekly, nil, nil)) == """
+        当前剩余：95%
+        周额度：未知
+        重置原因：疑似服务商调整
+        """)
     }
 
     @Test func skipsAlreadyNotifiedResetID() {

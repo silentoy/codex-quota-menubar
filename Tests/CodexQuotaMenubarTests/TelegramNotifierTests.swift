@@ -18,6 +18,7 @@ struct TelegramNotifierTests {
         let json = try JSONSerialization.jsonObject(with: body) as? [String: String]
         #expect(json?["chat_id"] == "456")
         #expect(json?["text"] == "Codex 测试")
+        #expect(json?["parse_mode"] == "MarkdownV2")
     }
 
     @Test func missingTokenOrChatIDDoesNotBuildRequest() {

@@ -10,17 +10,93 @@ struct QuotaResetNotificationEvent: Equatable, Sendable {
     let kind: QuotaWindowKind
     let reason: QuotaResetReason
     let percentRemaining: Int
+    let resetAt: Date?
     let resetID: String
 
     var message: String {
+        let title: String
+        let emoji: String
         switch reason {
         case .scheduled:
-            return "Codex \(kind.rawValue)已到期重置，当前剩余 \(percentRemaining)%。"
+            emoji = "✅"
+            title = "Codex \(kind.rawValue)已到期重置"
         case .suspectedProviderAdjustment:
-            return "Codex \(kind.rawValue)疑似由服务商调整，当前剩余 \(percentRemaining)%。"
+            emoji = "🔄"
+            title = "Codex \(kind.rawValue)疑似由服务商调整"
         case .unknownRecovery:
-            return "Codex 额度已恢复，原因暂无法确认，当前剩余 \(percentRemaining)%。"
+            emoji = "✨"
+            title = "Codex 额度已恢复，原因暂无法确认"
         }
+
+        return """
+        \(emoji) \(Self.bold(title))
+        📊 当前剩余：\(Self.code("\(percentRemaining)%"))
+        ⏰ 下次重置：\(Self.code(nextResetText))
+        """
+    }
+
+    var barkTitle: String {
+        switch reason {
+        case .scheduled:
+            return "Codex \(kind.rawValue)已重置"
+        case .suspectedProviderAdjustment, .unknownRecovery:
+            return "Codex \(kind.rawValue)已恢复"
+        }
+    }
+
+    func barkBody(companion: QuotaWindowSnapshot) -> String {
+        """
+        当前剩余：\(percentRemaining)%
+        \(companion.kind.rawValue)：\(Self.percentText(companion.percentRemaining))
+        重置原因：\(barkReasonText)
+        """
+    }
+
+    private var barkReasonText: String {
+        switch reason {
+        case .scheduled:
+            return "到期重置"
+        case .suspectedProviderAdjustment:
+            return "疑似服务商调整"
+        case .unknownRecovery:
+            return "未知恢复"
+        }
+    }
+
+    private var nextResetText: String {
+        guard let resetAt else { return "未知" }
+        return Self.resetDateFormatter.string(from: resetAt)
+    }
+
+    private static let resetDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "yyyy/M/d HH:mm"
+        return formatter
+    }()
+
+    private static func bold(_ text: String) -> String {
+        "*\(escapeMarkdownV2(text))*"
+    }
+
+    private static func code(_ text: String) -> String {
+        "`\(text.replacingOccurrences(of: "`", with: "\\`"))`"
+    }
+
+    private static func percentText(_ percent: Int?) -> String {
+        percent.map { "\($0)%" } ?? "未知"
+    }
+
+    private static func escapeMarkdownV2(_ text: String) -> String {
+        let specialCharacters = CharacterSet(charactersIn: "_*[]()~`>#+-=|{}.!")
+        var escaped = ""
+        for scalar in text.unicodeScalars {
+            if specialCharacters.contains(scalar) {
+                escaped.append("\\")
+            }
+            escaped.append(String(scalar))
+        }
+        return escaped
     }
 }
 
@@ -74,6 +150,7 @@ enum QuotaResetNotificationDetector {
             kind: kind,
             reason: reason,
             percentRemaining: currentPercent,
+            resetAt: current.resetAt,
             resetID: resetID
         )
     }

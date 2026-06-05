@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct ContentView: View {
@@ -47,19 +48,21 @@ struct ContentView: View {
         VStack(spacing: 10) {
             QuotaWindowView(
                 window: store.snapshot.fiveHour,
-                isBottleneck: store.snapshot.bottleneckWindows.contains(.fiveHour),
+                isBottleneck: store.bottleneckWindows.contains(.fiveHour),
                 level: store.level(for: store.snapshot.fiveHour.percentRemaining),
                 usedText: store.percentText(store.snapshot.fiveHour.percentUsed),
                 remainingText: store.percentText(store.snapshot.fiveHour.percentRemaining),
-                resetText: store.resetText(for: store.snapshot.fiveHour)
+                resetText: store.resetText(for: store.snapshot.fiveHour),
+                helpText: store.bottleneckExplanation
             )
             QuotaWindowView(
                 window: store.snapshot.weekly,
-                isBottleneck: store.snapshot.bottleneckWindows.contains(.weekly),
+                isBottleneck: store.bottleneckWindows.contains(.weekly),
                 level: store.level(for: store.snapshot.weekly.percentRemaining),
                 usedText: store.percentText(store.snapshot.weekly.percentUsed),
                 remainingText: store.percentText(store.snapshot.weekly.percentRemaining),
-                resetText: store.resetText(for: store.snapshot.weekly)
+                resetText: store.resetText(for: store.snapshot.weekly),
+                helpText: store.bottleneckExplanation
             )
         }
     }
@@ -71,9 +74,14 @@ struct ContentView: View {
                 .frame(width: 18)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("当前瓶颈")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("当前瓶颈")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(store.bottleneckMode.rawValue)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary.opacity(0.58))
+                }
                 Text(store.bottleneckSummaryText)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(store.menuColor)
@@ -89,6 +97,7 @@ struct ContentView: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(store.menuColor.opacity(0.22), lineWidth: 1)
         )
+        .help(store.bottleneckExplanation)
     }
 
     private var summaryRows: some View {
@@ -151,6 +160,7 @@ struct ContentView: View {
 
             Button {
                 openSettings()
+                bringSettingsWindowToFront()
             } label: {
                 Label("设置", systemImage: "gearshape")
                     .lineLimit(1)
@@ -198,6 +208,16 @@ struct ContentView: View {
         }
         return store.menuColor
     }
+
+    private func bringSettingsWindowToFront() {
+        NSApp.activate(ignoringOtherApps: true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            NSApp.activate(ignoringOtherApps: true)
+            NSApp.windows
+                .filter(\.canBecomeKey)
+                .forEach { $0.makeKeyAndOrderFront(nil) }
+        }
+    }
 }
 
 private struct QuotaWindowView: View {
@@ -207,6 +227,7 @@ private struct QuotaWindowView: View {
     let usedText: String
     let remainingText: String
     let resetText: String
+    let helpText: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -221,6 +242,7 @@ private struct QuotaWindowView: View {
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background(level.color.opacity(0.12), in: Capsule())
+                        .help(helpText)
                 }
                 Text(level.rawValue)
                     .font(.caption.weight(.medium))

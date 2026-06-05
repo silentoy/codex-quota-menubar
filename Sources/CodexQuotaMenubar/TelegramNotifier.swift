@@ -32,6 +32,7 @@ struct TelegramNotifier: Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "chat_id": trimmedChatID,
+            "parse_mode": "MarkdownV2",
             "text": text,
         ])
         return request

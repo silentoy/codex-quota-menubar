@@ -70,5 +70,7 @@ test -f "$CONTENTS_DIR/Info.plist"
 test -f "$RESOURCES_DIR/AppIcon.icns"
 /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$CONTENTS_DIR/Info.plist" | grep -qx "$VERSION"
 /usr/libexec/PlistBuddy -c "Print :LSUIElement" "$CONTENTS_DIR/Info.plist" | grep -qx "true"
+codesign --force --deep --sign - "$APP_DIR"
+codesign --verify --verbose=2 "$APP_DIR"
 
 echo "Built $APP_DIR"
