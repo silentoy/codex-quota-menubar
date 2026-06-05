@@ -17,10 +17,10 @@ struct QuotaSnapshotTests {
         #expect(snapshot.bottleneckRemainingPercent == 17)
     }
 
-    @Test func equalKnownWindowsAreParallelBottlenecks() {
+    @Test func equalKnownWindowsWithSameResetDefaultToFiveHour() {
         let snapshot = snapshot(fiveHour: 42, weekly: 42)
 
-        #expect(snapshot.bottleneckText == "并列瓶颈")
+        #expect(snapshot.bottleneckText == "5 小时额度")
         #expect(snapshot.bottleneckRemainingPercent == 42)
     }
 

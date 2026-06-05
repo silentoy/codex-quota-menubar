@@ -67,6 +67,12 @@ final class QuotaStore: ObservableObject {
     @AppStorage("quotaHistoryRecords") private var quotaHistoryRecordsRaw = "" {
         willSet { objectWillChange.send() }
     }
+    @AppStorage("quotaUsageHourBuckets") private var quotaUsageHourBucketsRaw = "" {
+        willSet { objectWillChange.send() }
+    }
+    @AppStorage("quotaUsageLastSample") private var quotaUsageLastSampleRaw = "" {
+        willSet { objectWillChange.send() }
+    }
 
     @Published private(set) var snapshot: QuotaSnapshot = .unknown(
         source: .codexAuth,
@@ -230,6 +236,7 @@ final class QuotaStore: ObservableObject {
         } else {
             snapshot = result
             rememberHistoryIfNeeded(result)
+            rememberUsageFrequencyIfNeeded(result)
             updateBottleneckEvaluation()
             if result.failed {
                 statusMessage = "读取失败。"
@@ -408,10 +415,58 @@ final class QuotaStore: ObservableObject {
         )
     }
 
+    private var usageHourBuckets: [QuotaUsageHourBucket] {
+        get {
+            guard let data = quotaUsageHourBucketsRaw.data(using: .utf8),
+                  let buckets = try? JSONDecoder().decode([QuotaUsageHourBucket].self, from: data) else {
+                return []
+            }
+            return buckets
+        }
+        set {
+            guard let data = try? JSONEncoder().encode(newValue),
+                  let raw = String(data: data, encoding: .utf8) else {
+                return
+            }
+            quotaUsageHourBucketsRaw = raw
+        }
+    }
+
+    private var usageLastSample: QuotaUsageLastSample? {
+        get {
+            guard let data = quotaUsageLastSampleRaw.data(using: .utf8) else {
+                return nil
+            }
+            return try? JSONDecoder().decode(QuotaUsageLastSample.self, from: data)
+        }
+        set {
+            guard let newValue,
+                  let data = try? JSONEncoder().encode(newValue),
+                  let raw = String(data: data, encoding: .utf8) else {
+                quotaUsageLastSampleRaw = ""
+                return
+            }
+            quotaUsageLastSampleRaw = raw
+        }
+    }
+
+    private func rememberUsageFrequencyIfNeeded(_ snapshot: QuotaSnapshot) {
+        var buckets = usageHourBuckets
+        var lastSample = usageLastSample
+        QuotaUsageFrequencyRecorder.record(
+            snapshot: snapshot,
+            buckets: &buckets,
+            lastSample: &lastSample
+        )
+        usageHourBuckets = buckets
+        usageLastSample = lastSample
+    }
+
     func updateBottleneckEvaluation() {
         bottleneckEvaluation = QuotaBottleneckEvaluator.evaluate(
             snapshot: snapshot,
             historyRecords: historyRecords,
+            usageBuckets: usageHourBuckets,
             mode: bottleneckMode
         )
     }
