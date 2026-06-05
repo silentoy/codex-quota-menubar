@@ -12,68 +12,114 @@ struct QuotaResetNotificationEvent: Equatable, Sendable {
     let percentRemaining: Int
     let resetAt: Date?
     let resetID: String
+    let lang: AppLanguage
 
     var message: String {
         let title: String
         let emoji: String
-        switch reason {
-        case .scheduled:
-            emoji = "✅"
-            title = "Codex \(kind.rawValue)已到期重置"
-        case .suspectedProviderAdjustment:
-            emoji = "🔄"
-            title = "Codex \(kind.rawValue)疑似由服务商调整"
-        case .unknownRecovery:
-            emoji = "✨"
-            title = "Codex 额度已恢复，原因暂无法确认"
+        let kindName = kind.localizedName(lang: lang)
+        if lang == .en {
+            switch reason {
+            case .scheduled:
+                emoji = "✅"
+                title = "Codex \(kindName) has reset"
+            case .suspectedProviderAdjustment:
+                emoji = "🔄"
+                title = "Codex \(kindName) suspected adjustment by provider"
+            case .unknownRecovery:
+                emoji = "✨"
+                title = "Codex quota recovered (reason unconfirmed)"
+            }
+            return """
+            \(emoji) \(Self.bold(title))
+            📊 Current Remaining: \(Self.code("\(percentRemaining)%"))
+            ⏰ Next Reset: \(Self.code(nextResetText))
+            """
+        } else {
+            switch reason {
+            case .scheduled:
+                emoji = "✅"
+                title = "Codex \(kindName)已到期重置"
+            case .suspectedProviderAdjustment:
+                emoji = "🔄"
+                title = "Codex \(kindName)疑似由服务商调整"
+            case .unknownRecovery:
+                emoji = "✨"
+                title = "Codex 额度已恢复，原因暂无法确认"
+            }
+            return """
+            \(emoji) \(Self.bold(title))
+            📊 当前剩余：\(Self.code("\(percentRemaining)%"))
+            ⏰ 下次重置：\(Self.code(nextResetText))
+            """
         }
-
-        return """
-        \(emoji) \(Self.bold(title))
-        📊 当前剩余：\(Self.code("\(percentRemaining)%"))
-        ⏰ 下次重置：\(Self.code(nextResetText))
-        """
     }
 
     var barkTitle: String {
-        switch reason {
-        case .scheduled:
-            return "Codex \(kind.rawValue)已重置"
-        case .suspectedProviderAdjustment, .unknownRecovery:
-            return "Codex \(kind.rawValue)已恢复"
+        let kindName = kind.localizedName(lang: lang)
+        if lang == .en {
+            switch reason {
+            case .scheduled:
+                return "Codex \(kindName) Reset"
+            case .suspectedProviderAdjustment, .unknownRecovery:
+                return "Codex \(kindName) Recovered"
+            }
+        } else {
+            switch reason {
+            case .scheduled:
+                return "Codex \(kindName)已重置"
+            case .suspectedProviderAdjustment, .unknownRecovery:
+                return "Codex \(kindName)已恢复"
+            }
         }
     }
 
     func barkBody(companion: QuotaWindowSnapshot) -> String {
-        """
-        当前剩余：\(percentRemaining)%
-        \(companion.kind.rawValue)：\(Self.percentText(companion.percentRemaining))
-        重置原因：\(barkReasonText)
-        """
+        let companionKindName = companion.kind.localizedName(lang: lang)
+        if lang == .en {
+            return """
+            Current Remaining: \(percentRemaining)%
+            \(companionKindName): \(Self.percentText(companion.percentRemaining, lang: lang))
+            Reset Reason: \(barkReasonText)
+            """
+        } else {
+            return """
+            当前剩余：\(percentRemaining)%
+            \(companionKindName)：\(Self.percentText(companion.percentRemaining, lang: lang))
+            重置原因：\(barkReasonText)
+            """
+        }
     }
 
     private var barkReasonText: String {
-        switch reason {
-        case .scheduled:
-            return "到期重置"
-        case .suspectedProviderAdjustment:
-            return "疑似服务商调整"
-        case .unknownRecovery:
-            return "未知恢复"
+        if lang == .en {
+            switch reason {
+            case .scheduled:
+                return "Scheduled Reset"
+            case .suspectedProviderAdjustment:
+                return "Suspected Provider Adjustment"
+            case .unknownRecovery:
+                return "Unknown Recovery"
+            }
+        } else {
+            switch reason {
+            case .scheduled:
+                return "到期重置"
+            case .suspectedProviderAdjustment:
+                return "疑似服务商调整"
+            case .unknownRecovery:
+                return "未知恢复"
+            }
         }
     }
 
     private var nextResetText: String {
-        guard let resetAt else { return "未知" }
-        return Self.resetDateFormatter.string(from: resetAt)
-    }
-
-    private static let resetDateFormatter: DateFormatter = {
+        guard let resetAt else { return lang == .en ? "Unknown" : "未知" }
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.locale = Locale(identifier: lang == .en ? "en_US" : "zh_CN")
         formatter.dateFormat = "yyyy/M/d HH:mm"
-        return formatter
-    }()
+        return formatter.string(from: resetAt)
+    }
 
     private static func bold(_ text: String) -> String {
         "*\(escapeMarkdownV2(text))*"
@@ -83,8 +129,8 @@ struct QuotaResetNotificationEvent: Equatable, Sendable {
         "`\(text.replacingOccurrences(of: "`", with: "\\`"))`"
     }
 
-    private static func percentText(_ percent: Int?) -> String {
-        percent.map { "\($0)%" } ?? "未知"
+    private static func percentText(_ percent: Int?, lang: AppLanguage) -> String {
+        percent.map { "\($0)%" } ?? (lang == .en ? "Unknown" : "未知")
     }
 
     private static func escapeMarkdownV2(_ text: String) -> String {
@@ -105,6 +151,7 @@ enum QuotaResetNotificationDetector {
         previous: QuotaSnapshot?,
         current: QuotaSnapshot,
         now: Date = Date(),
+        lang: AppLanguage = .zh,
         notifiedResetIDs: Set<String>
     ) -> [QuotaResetNotificationEvent] {
         guard let previous, !current.failed else { return [] }
@@ -115,6 +162,7 @@ enum QuotaResetNotificationDetector {
                 previous: previous.fiveHour,
                 current: current.fiveHour,
                 now: now,
+                lang: lang,
                 notifiedResetIDs: notifiedResetIDs
             ),
             event(
@@ -122,6 +170,7 @@ enum QuotaResetNotificationDetector {
                 previous: previous.weekly,
                 current: current.weekly,
                 now: now,
+                lang: lang,
                 notifiedResetIDs: notifiedResetIDs
             ),
         ].compactMap(\.self)
@@ -132,6 +181,7 @@ enum QuotaResetNotificationDetector {
         previous: QuotaWindowSnapshot,
         current: QuotaWindowSnapshot,
         now: Date,
+        lang: AppLanguage,
         notifiedResetIDs: Set<String>
     ) -> QuotaResetNotificationEvent? {
         guard let previousPercent = previous.percentRemaining,
@@ -151,7 +201,8 @@ enum QuotaResetNotificationDetector {
             reason: reason,
             percentRemaining: currentPercent,
             resetAt: current.resetAt,
-            resetID: resetID
+            resetID: resetID,
+            lang: lang
         )
     }
 

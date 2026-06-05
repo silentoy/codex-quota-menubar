@@ -6,40 +6,46 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            Section("预览") {
+            Section(store.t("预览", "Preview")) {
                 preview
             }
 
-            Section("通用") {
-                Picker("刷新间隔", selection: $store.refreshIntervalMinutes) {
-                    Text("5 分钟").tag(5)
-                    Text("10 分钟").tag(10)
-                    Text("30 分钟").tag(30)
+            Section(store.t("通用", "General")) {
+                Picker(store.t("语言", "Language"), selection: $store.appLanguageRaw) {
+                    ForEach(AppLanguage.allCases) { lang in
+                        Text(lang.rawValue).tag(lang.rawValue)
+                    }
+                }
+
+                Picker(store.t("刷新间隔", "Refresh Interval"), selection: $store.refreshIntervalMinutes) {
+                    Text(store.t("5 分钟", "5 Minutes")).tag(5)
+                    Text(store.t("10 分钟", "10 Minutes")).tag(10)
+                    Text(store.t("30 分钟", "30 Minutes")).tag(30)
                 }
                 .onChange(of: store.refreshIntervalMinutes) {
                     store.updateTimer()
                 }
 
-                Picker("显示格式", selection: $store.displayModeRaw) {
+                Picker(store.t("显示格式", "Display Format"), selection: $store.displayModeRaw) {
                     ForEach(DisplayMode.allCases) { mode in
-                        Text(mode.rawValue).tag(mode.rawValue)
+                        Text(mode.localizedName(lang: store.language)).tag(mode.rawValue)
                     }
                 }
 
-                Picker("瓶颈判断方式", selection: $store.bottleneckModeRaw) {
+                Picker(store.t("瓶颈判断方式", "Bottleneck Assessment"), selection: $store.bottleneckModeRaw) {
                     ForEach(BottleneckMode.allCases) { mode in
-                        Text(mode.rawValue).tag(mode.rawValue)
+                        Text(mode.localizedName(lang: store.language)).tag(mode.rawValue)
                     }
                 }
                 .onChange(of: store.bottleneckModeRaw) {
                     store.updateBottleneckEvaluation()
                 }
 
-                Toggle("开机启动", isOn: launchAtLoginBinding)
+                Toggle(store.t("开机启动", "Launch at Login"), isOn: launchAtLoginBinding)
             }
 
-            Section("提醒") {
-                Picker("低额度提醒", selection: $store.lowThreshold) {
+            Section(store.t("提醒", "Notifications")) {
+                Picker(store.t("低额度提醒", "Low Quota Alert"), selection: $store.lowThreshold) {
                     Text("10%").tag(10)
                     Text("20%").tag(20)
                     Text("30%").tag(30)
@@ -49,16 +55,16 @@ struct SettingsView: View {
                 .pickerStyle(.segmented)
             }
 
-            Section("Telegram 推送") {
-                Toggle("启用 Telegram 推送", isOn: $store.telegramEnabled)
+            Section(store.t("Telegram 推送", "Telegram Push")) {
+                Toggle(store.t("启用 Telegram 推送", "Enable Telegram Push"), isOn: $store.telegramEnabled)
 
                 SecureField("Bot Token", text: telegramBotTokenBinding)
                     .textContentType(.password)
 
                 TextField("Chat ID", text: $store.telegramChatID)
 
-                Toggle("5 小时额度重置提醒", isOn: $store.telegramNotifyFiveHourReset)
-                Toggle("周额度重置提醒", isOn: $store.telegramNotifyWeeklyReset)
+                Toggle(store.t("5 小时额度重置提醒", "5-Hour Quota Reset Alert"), isOn: $store.telegramNotifyFiveHourReset)
+                Toggle(store.t("周额度重置提醒", "Weekly Quota Reset Alert"), isOn: $store.telegramNotifyWeeklyReset)
 
                 Button {
                     store.sendTelegramTestMessage()
@@ -67,22 +73,22 @@ struct SettingsView: View {
                         HStack {
                             ProgressView()
                                 .controlSize(.small)
-                            Text("发送中")
+                            Text(store.t("发送中", "Sending"))
                         }
                     } else {
-                        Label("发送测试消息", systemImage: "paperplane")
+                        Label(store.t("发送测试消息", "Send Test Message"), systemImage: "paperplane")
                     }
                 }
                 .disabled(store.isSendingTelegramTest)
 
-                Text("Token 保存在 macOS Keychain；重置原因来自本地推断，非到期场景会标注“疑似”。")
+                Text(store.t("Token 保存在 macOS Keychain；重置原因来自本地推断，非到期场景会标注“疑似”。", "Token is saved in macOS Keychain. Reset reasons are inferred locally; non-expiration events are marked as 'suspected'."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Section("Bark 推送") {
-                Toggle("启用 Bark 推送", isOn: $store.barkEnabled)
+            Section(store.t("Bark 推送", "Bark Push")) {
+                Toggle(store.t("启用 Bark 推送", "Enable Bark Push"), isOn: $store.barkEnabled)
 
                 TextField("Server URL", text: $store.barkServerURL)
                     .textContentType(.URL)
@@ -90,8 +96,8 @@ struct SettingsView: View {
                 SecureField("Device Key", text: barkDeviceKeyBinding)
                     .textContentType(.password)
 
-                Toggle("5 小时额度重置提醒", isOn: $store.barkNotifyFiveHourReset)
-                Toggle("周额度重置提醒", isOn: $store.barkNotifyWeeklyReset)
+                Toggle(store.t("5 小时额度重置提醒", "5-Hour Quota Reset Alert"), isOn: $store.barkNotifyFiveHourReset)
+                Toggle(store.t("周额度重置提醒", "Weekly Quota Reset Alert"), isOn: $store.barkNotifyWeeklyReset)
 
                 Button {
                     store.sendBarkTestMessage()
@@ -100,22 +106,22 @@ struct SettingsView: View {
                         HStack {
                             ProgressView()
                                 .controlSize(.small)
-                            Text("发送中")
+                            Text(store.t("发送中", "Sending"))
                         }
                     } else {
-                        Label("发送测试消息", systemImage: "paperplane")
+                        Label(store.t("发送测试消息", "Send Test Message"), systemImage: "paperplane")
                     }
                 }
                 .disabled(store.isSendingBarkTest)
 
-                Text("Device Key 保存在 macOS Keychain；默认使用 https://api.day.app，也可填写自建 Bark Server。")
+                Text(store.t("Device Key 保存在 macOS Keychain；默认使用 https://api.day.app，也可填写自建 Bark Server。", "Device Key is saved in macOS Keychain. Defaults to https://api.day.app, self-hosted Bark Server is also supported."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             Section {
-                Text("通过 ~/.codex/auth.json 读取登录态数据。\n开机启动需以 .app 形式运行。")
+                Text(store.t("通过 ~/.codex/auth.json 读取登录态数据。\n开机启动需以 .app 形式运行。", "Reads auth data from ~/.codex/auth.json.\nAuto launch requires running as a .app."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -139,10 +145,10 @@ struct SettingsView: View {
             previewBadge
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("菜单栏显示")
+                Text(store.t("菜单栏显示", "Menu Bar Display"))
                     .font(.subheadline.weight(.semibold))
 
-                Text("低于 \(store.lowThreshold)% 时显示橙色提醒，5% 以下显示红色。")
+                Text(store.t("低于 \(store.lowThreshold)% 时显示橙色提醒，5% 以下显示红色。", "Alert is orange when below \(store.lowThreshold)%, and red when below 5%."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -170,7 +176,7 @@ struct SettingsView: View {
             .padding(6)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
         } else {
-            Text("Codex 18%")
+            Text(store.t("Codex 18%", "Codex 18%"))
                 .font(.system(.subheadline, design: .rounded).weight(.semibold))
                 .monospacedDigit()
                 .foregroundStyle(previewLevelColor)

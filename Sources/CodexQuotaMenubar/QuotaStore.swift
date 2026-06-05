@@ -73,6 +73,24 @@ final class QuotaStore: ObservableObject {
     @AppStorage("quotaUsageLastSample") private var quotaUsageLastSampleRaw = "" {
         willSet { objectWillChange.send() }
     }
+    static var defaultLanguageRaw: String {
+        if let preferred = Locale.preferredLanguages.first, preferred.hasPrefix("en") {
+            return AppLanguage.en.rawValue
+        }
+        return AppLanguage.zh.rawValue
+    }
+
+    @AppStorage("appLanguage") var appLanguageRaw = QuotaStore.defaultLanguageRaw {
+        willSet { objectWillChange.send() }
+    }
+
+    var language: AppLanguage {
+        AppLanguage(rawValue: appLanguageRaw) ?? .zh
+    }
+
+    func t(_ zh: String, _ en: String) -> String {
+        language == .en ? en : zh
+    }
 
     @Published private(set) var snapshot: QuotaSnapshot = .unknown(
         source: .codexAuth,
@@ -102,6 +120,20 @@ final class QuotaStore: ObservableObject {
     init() {
         telegramBotToken = KeychainTokenStore.loadTelegramBotToken()
         barkDeviceKey = KeychainTokenStore.loadBarkDeviceKey()
+        let initialMsg = appLanguageRaw == AppLanguage.en.rawValue ? "Waiting for first refresh." : "等待首次刷新。"
+        statusMessage = initialMsg
+        snapshot = .unknown(
+            source: .codexAuth,
+            detail: initialMsg
+        )
+        bottleneckEvaluation = QuotaBottleneckEvaluator.evaluate(
+            snapshot: .unknown(
+                source: .codexAuth,
+                detail: initialMsg
+            ),
+            historyRecords: [],
+            mode: .percentage
+        )
         if !didDefaultCodexAuthSource {
             sourceRaw = QuotaSource.codexAuth.rawValue
             didDefaultCodexAuthSource = true
@@ -150,12 +182,19 @@ final class QuotaStore: ObservableObject {
         level.color
     }
 
+    var relativeFormatter: RelativeDateTimeFormatter {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.locale = Locale(identifier: language == .en ? "en_US" : "zh_CN")
+        formatter.unitsStyle = .full
+        return formatter
+    }
+
     var lastRefreshText: String {
-        Self.relativeFormatter.localizedString(for: snapshot.capturedAt, relativeTo: Date())
+        relativeFormatter.localizedString(for: snapshot.capturedAt, relativeTo: Date())
     }
 
     var resetText: String {
-        QuotaResetDateFormatter.text(for: bottleneckEvaluation.resetAt, kind: bottleneck ?? .fiveHour)
+        QuotaResetDateFormatter.text(for: bottleneckEvaluation.resetAt, kind: bottleneck ?? .fiveHour, lang: language)
     }
 
     var bottleneckWindows: [QuotaWindowKind] {
@@ -167,7 +206,10 @@ final class QuotaStore: ObservableObject {
     }
 
     var bottleneckText: String {
-        bottleneckEvaluation.text
+        if bottleneckWindows.count > 1 {
+            return t("并列瓶颈", "Multiple Bottlenecks")
+        }
+        return bottleneck?.localizedName(lang: language) ?? t("未知", "Unknown")
     }
 
     var bottleneckExplanation: String {
@@ -176,9 +218,12 @@ final class QuotaStore: ObservableObject {
 
     var bottleneckSummaryText: String {
         guard let percent = bottleneckEvaluation.remainingPercent else {
-            return "暂未读取到精确额度。"
+            return t("暂未读取到精确额度。", "No accurate quota read yet.")
         }
-        return "\(bottleneckText) · 剩余 \(percent)% · \(resetText)"
+        return t(
+            "\(bottleneckText) · 剩余 \(percent)% · \(resetText)",
+            "\(bottleneckText) · \(percent)% remaining · \(resetText)"
+        )
     }
 
     func level(for percent: Int?) -> QuotaLevel {
@@ -186,17 +231,20 @@ final class QuotaStore: ObservableObject {
     }
 
     func percentText(_ percent: Int?) -> String {
-        percent.map { "\($0)%" } ?? "未知"
+        percent.map { "\($0)%" } ?? t("未知", "Unknown")
     }
 
     func resetText(for window: QuotaWindowSnapshot) -> String {
-        QuotaResetDateFormatter.text(for: window.resetAt, kind: window.kind)
+        QuotaResetDateFormatter.text(for: window.resetAt, kind: window.kind, lang: language)
     }
 
     func accessibilityLabel() -> String {
-        let fiveHourLevel = level(for: snapshot.fiveHour.percentRemaining).rawValue
-        let weeklyLevel = level(for: snapshot.weekly.percentRemaining).rawValue
-        return "Codex 额度，5 小时\(fiveHourLevel)，周额度\(weeklyLevel)"
+        let fiveHourLevel = level(for: snapshot.fiveHour.percentRemaining).localizedName(lang: language)
+        let weeklyLevel = level(for: snapshot.weekly.percentRemaining).localizedName(lang: language)
+        return t(
+            "Codex 额度，5 小时\(fiveHourLevel)，周额度\(weeklyLevel)",
+            "Codex Quota, 5-Hour \(fiveHourLevel), Weekly \(weeklyLevel)"
+        )
     }
 
     func updateTimer() {
@@ -212,7 +260,7 @@ final class QuotaStore: ObservableObject {
 
     func manualRefresh() {
         if let lastManualRefreshAt, Date().timeIntervalSince(lastManualRefreshAt) < 3 {
-            statusMessage = "刷新太频繁，请稍等。"
+            statusMessage = t("刷新太频繁，请稍等。", "Refresh too frequent. Please wait.")
             return
         }
 
@@ -225,25 +273,25 @@ final class QuotaStore: ObservableObject {
     func refresh(force: Bool) async {
         guard !isRefreshing else { return }
         isRefreshing = true
-        statusMessage = "正在刷新..."
+        statusMessage = t("正在刷新...", "Refreshing...")
 
         let provider = makeProvider()
         let result = await provider.fetch()
         let previousSnapshot = snapshot
 
         if result.failed, snapshot.percentRemaining != nil, !force {
-            statusMessage = "读取失败，显示上次结果。"
+            statusMessage = t("读取失败，显示上次结果。", "Fetch failed. Showing last result.")
         } else {
             snapshot = result
             rememberHistoryIfNeeded(result)
             rememberUsageFrequencyIfNeeded(result)
             updateBottleneckEvaluation()
             if result.failed {
-                statusMessage = "读取失败。"
+                statusMessage = t("读取失败。", "Fetch failed.")
             } else if result.percentRemaining == nil {
-                statusMessage = "未读取到额度。"
+                statusMessage = t("未读取到额度。", "No quota read.")
             } else {
-                statusMessage = "刚刚更新。"
+                statusMessage = t("刚刚更新。", "Just updated.")
             }
         }
 
@@ -259,7 +307,7 @@ final class QuotaStore: ObservableObject {
         do {
             try KeychainTokenStore.saveTelegramBotToken(token)
         } catch {
-            statusMessage = "保存 Telegram Token 失败。"
+            statusMessage = t("保存 Telegram Token 失败。", "Failed to save Telegram Token.")
         }
     }
 
@@ -268,7 +316,7 @@ final class QuotaStore: ObservableObject {
         do {
             try KeychainTokenStore.saveBarkDeviceKey(deviceKey)
         } catch {
-            statusMessage = "保存 Bark Device Key 失败。"
+            statusMessage = t("保存 Bark Device Key 失败。", "Failed to save Bark Device Key.")
         }
     }
 
@@ -276,7 +324,7 @@ final class QuotaStore: ObservableObject {
         guard !isSendingTelegramTest else { return }
         isSendingTelegramTest = true
         Task {
-            _ = await sendTelegramMessage("Codex Quota Telegram 测试消息。")
+            _ = await sendTelegramMessage(t("Codex 额度 Telegram 测试消息。", "Codex Quota Telegram test message."))
             isSendingTelegramTest = false
         }
     }
@@ -286,8 +334,8 @@ final class QuotaStore: ObservableObject {
         isSendingBarkTest = true
         Task {
             _ = await sendBarkMessage(
-                title: "Codex 额度提醒",
-                body: "Bark 测试消息\n如果你看到这条通知，说明推送已配置成功。"
+                title: t("Codex 额度提醒", "Codex Quota Alert"),
+                body: t("Bark 测试消息\n如果你看到这条通知，说明推送已配置成功。", "Bark test message\nIf you see this notification, the push is configured successfully.")
             )
             isSendingBarkTest = false
         }
@@ -331,7 +379,7 @@ final class QuotaStore: ObservableObject {
             guard let appPath = Bundle.main.bundlePath as String?,
                   appPath.hasSuffix(".app") else {
                 launchAtLogin = false
-                statusMessage = "开机启动需以 .app 形式运行。"
+                statusMessage = t("开机启动需以 .app 形式运行。", "Auto launch requires running as a .app.")
                 return
             }
 
@@ -348,15 +396,15 @@ final class QuotaStore: ObservableObject {
             let data = try? PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
             if let data, fm.createFile(atPath: plistPath, contents: data) {
                 launchAtLogin = true
-                statusMessage = "已开启开机启动。"
+                statusMessage = t("已开启开机启动。", "Auto launch enabled.")
             } else {
                 launchAtLogin = false
-                statusMessage = "写入 LaunchAgent 失败。"
+                statusMessage = t("写入 LaunchAgent 失败。", "Failed to write LaunchAgent.")
             }
         } else {
             try? fm.removeItem(atPath: plistPath)
             launchAtLogin = false
-            statusMessage = "已关闭开机启动。"
+            statusMessage = t("已关闭开机启动。", "Auto launch disabled.")
         }
     }
 
@@ -467,7 +515,8 @@ final class QuotaStore: ObservableObject {
             snapshot: snapshot,
             historyRecords: historyRecords,
             usageBuckets: usageHourBuckets,
-            mode: bottleneckMode
+            mode: bottleneckMode,
+            lang: language
         )
     }
 
@@ -482,6 +531,7 @@ final class QuotaStore: ObservableObject {
         let events = QuotaResetNotificationDetector.events(
             previous: previous,
             current: current,
+            lang: language,
             notifiedResetIDs: telegramNotifiedResetIDs
         )
         let enabledEvents = events.filter { event in
@@ -507,6 +557,7 @@ final class QuotaStore: ObservableObject {
         let events = QuotaResetNotificationDetector.events(
             previous: previous,
             current: current,
+            lang: language,
             notifiedResetIDs: barkNotifiedResetIDs
         )
         let enabledEvents = events.filter { event in
@@ -536,12 +587,12 @@ final class QuotaStore: ObservableObject {
                 chatID: telegramChatID,
                 text: message
             )
-            statusMessage = "已发送 Telegram 通知。"
+            statusMessage = t("已发送 Telegram 通知。", "Telegram notification sent.")
             return true
         } catch TelegramNotificationError.missingConfiguration {
-            statusMessage = "请先填写 Telegram Token 和 Chat ID。"
+            statusMessage = t("请先填写 Telegram Token 和 Chat ID。", "Please configure Telegram Token and Chat ID first.")
         } catch {
-            statusMessage = "Telegram 通知发送失败。"
+            statusMessage = t("Telegram 通知发送失败。", "Failed to send Telegram notification.")
         }
         return false
     }
@@ -554,18 +605,18 @@ final class QuotaStore: ObservableObject {
                 title: title,
                 body: body
             )
-            statusMessage = "已发送 Bark 通知。"
+            statusMessage = t("已发送 Bark 通知。", "Bark notification sent.")
             return true
         } catch BarkNotificationError.missingConfiguration {
-            statusMessage = "请先填写 Bark Server URL 和 Device Key。"
+            statusMessage = t("请先填写 Bark Server URL 和 Device Key。", "Please configure Bark Server URL and Device Key first.")
         } catch BarkNotificationError.invalidServerURL {
-            statusMessage = "Bark Server URL 无效。"
+            statusMessage = t("Bark Server URL 无效。", "Invalid Bark Server URL.")
         } catch BarkNotificationError.apiError(let message) {
-            statusMessage = "Bark 通知发送失败：\(message)"
+            statusMessage = t("Bark 通知发送失败：\(message)", "Failed to send Bark notification: \(message)")
         } catch BarkNotificationError.httpError(let statusCode) {
-            statusMessage = "Bark 通知发送失败：HTTP \(statusCode)。"
+            statusMessage = t("Bark 通知发送失败：HTTP \(statusCode)。", "Failed to send Bark notification: HTTP \(statusCode).")
         } catch {
-            statusMessage = "Bark 通知发送失败。"
+            statusMessage = t("Bark 通知发送失败。", "Failed to send Bark notification.")
         }
         return false
     }

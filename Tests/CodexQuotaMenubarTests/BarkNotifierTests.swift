@@ -22,6 +22,7 @@ struct BarkNotifierTests {
         #expect(json?["body"] as? String == "当前剩余：100%\n周额度：61%\n重置原因：到期重置")
         #expect(json?["group"] as? String == "Codex Quota")
         #expect(json?["level"] as? String == "timeSensitive")
+        #expect(json?["icon"] as? String == "https://dy-retail.oss-cn-beijing.aliyuncs.com/resource/20260605T083230-14e2518c-app-icon.png")
     }
 
     @Test func trimsServerURLTrailingSlash() throws {

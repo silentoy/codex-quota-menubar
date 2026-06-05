@@ -29,16 +29,16 @@ struct ContentView: View {
             .frame(width: 30, height: 30)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("Codex 额度")
+                Text(store.t("Codex 额度", "Codex Quota"))
                     .font(.headline)
-                Text(store.statusMessage)
+                Text(localizedStatusMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             Spacer()
 
-            Text(store.level.rawValue)
+            Text(store.level.localizedName(lang: store.language))
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(store.menuColor)
         }
@@ -75,10 +75,10 @@ struct ContentView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text("当前瓶颈")
+                    Text(store.t("当前瓶颈", "Current Bottleneck"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text(store.bottleneckMode.rawValue)
+                    Text(store.bottleneckMode.localizedName(lang: store.language))
                         .font(.caption2)
                         .foregroundStyle(.secondary.opacity(0.58))
                 }
@@ -102,8 +102,8 @@ struct ContentView: View {
 
     private var summaryRows: some View {
         VStack(spacing: 8) {
-            InfoRow(label: "最后刷新", value: store.lastRefreshText)
-            InfoRow(label: "数据来源", value: store.snapshot.source.rawValue)
+            InfoRow(label: store.t("最后刷新", "Last Refresh"), value: store.lastRefreshText)
+            InfoRow(label: store.t("数据来源", "Data Source"), value: store.snapshot.source.localizedName(lang: store.language))
         }
     }
 
@@ -129,18 +129,25 @@ struct ContentView: View {
                 store.manualRefresh()
             } label: {
                 if store.isRefreshing {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 4) {
                         ProgressView()
                             .controlSize(.small)
+                            .tint(store.level.color)
                             .frame(width: 13, height: 13)
-                        Text("刷新中")
-                            .lineLimit(1)
+                        Text(store.t("刷新中", "Refreshing"))
                     }
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
                     .frame(maxWidth: .infinity)
                 } else {
-                    Label("刷新", systemImage: "arrow.clockwise")
-                        .lineLimit(1)
-                        .frame(maxWidth: .infinity)
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.clockwise")
+                            .foregroundStyle(store.level.color)
+                        Text(store.t("刷新", "Refresh"))
+                    }
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                    .frame(maxWidth: .infinity)
                 }
             }
             .controlSize(.regular)
@@ -150,21 +157,29 @@ struct ContentView: View {
             Button {
                 store.openCodex()
             } label: {
-                Label("Codex", systemImage: "app.badge")
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity)
+                HStack(spacing: 4) {
+                    Image(systemName: "app.badge")
+                    Text("Codex")
+                }
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .frame(maxWidth: .infinity)
             }
             .controlSize(.regular)
-            .accessibilityLabel("打开 Codex")
+            .accessibilityLabel(store.t("打开 Codex", "Open Codex"))
             .frame(maxWidth: .infinity)
 
             Button {
                 openSettings()
                 bringSettingsWindowToFront()
             } label: {
-                Label("设置", systemImage: "gearshape")
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity)
+                HStack(spacing: 4) {
+                    Image(systemName: "gearshape")
+                    Text(store.t("设置", "Settings"))
+                }
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .frame(maxWidth: .infinity)
             }
             .controlSize(.regular)
             .frame(maxWidth: .infinity)
@@ -174,14 +189,14 @@ struct ContentView: View {
     private var footer: some View {
         VStack(alignment: .leading, spacing: 8) {
             Divider()
-            Text(store.snapshot.detail)
+            Text(localizedDetailText)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack {
                 Spacer()
-                Button("退出") {
+                Button(store.t("退出", "Quit")) {
                     store.quit()
                 }
                 .keyboardShortcut("q")
@@ -189,14 +204,61 @@ struct ContentView: View {
         }
     }
 
+    private var localizedStatusMessage: String {
+        let msg = store.statusMessage
+        if msg == "刚刚更新。" || msg == "Just updated." {
+            return store.t("刚刚更新。", "Just updated.")
+        }
+        if msg == "正在刷新..." || msg == "Refreshing..." {
+            return store.t("正在刷新...", "Refreshing...")
+        }
+        if msg == "等待首次刷新。" || msg == "Waiting for first refresh." || msg == "Waiting for the first refresh." {
+            return store.t("等待首次刷新。", "Waiting for the first refresh.")
+        }
+        if msg == "读取失败。" || msg == "Fetch failed." {
+            return store.t("读取失败。", "Fetch failed.")
+        }
+        if msg == "未读取到额度。" || msg == "No quota read." {
+            return store.t("未读取到额度。", "No quota read.")
+        }
+        if msg == "读取失败，显示上次结果。" || msg == "Fetch failed. Showing last result." {
+            return store.t("读取失败，显示上次结果。", "Fetch failed. Showing last result.")
+        }
+        if msg == "刷新太频繁，请稍等。" || msg == "Refresh too frequent. Please wait." {
+            return store.t("刷新太频繁，请稍等。", "Refresh too frequent. Please wait.")
+        }
+        return msg
+    }
+
+    private var localizedDetailText: String {
+        let detail = store.snapshot.detail
+        if store.language == .en {
+            var text = detail
+            text = text.replacingOccurrences(of: "通过 ~/.codex/auth.json 调用 ChatGPT usage 接口。计划：", with: "Called ChatGPT usage API via ~/.codex/auth.json. Plan: ")
+            text = text.replacingOccurrences(of: "，短周期剩余：", with: ", 5h remaining: ")
+            text = text.replacingOccurrences(of: "，周额度剩余：", with: ", weekly remaining: ")
+            text = text.replacingOccurrences(of: "ChatGPT usage 接口结构可能已变化，未读取到 primary_window 或 secondary_window。计划：", with: "ChatGPT usage API structure might have changed, primary_window or secondary_window not found. Plan: ")
+            text = text.replacingOccurrences(of: "读取 Codex 登录态失败：", with: "Failed to read Codex auth: ")
+            text = text.replacingOccurrences(of: "未找到 ~/.codex 目录。", with: "Directory ~/.codex not found.")
+            text = text.replacingOccurrences(of: "使用手动填写的额度。", with: "Using manually entered quota.")
+            text = text.replacingOccurrences(of: "从 ", with: "Read from ")
+            text = text.replacingOccurrences(of: " 的 ", with: "'s ")
+            text = text.replacingOccurrences(of: " 字段读取。", with: " field.")
+            text = text.replacingOccurrences(of: "本机 Codex 状态中未发现公开额度字段；未读取 auth.json、Cookie 或网页登录态。", with: "No public quota fields found in local Codex state; auth.json, cookie, or web session not read.")
+            text = text.replacingOccurrences(of: "等待首次刷新。", with: "Waiting for the first refresh.")
+            return text
+        }
+        return detail
+    }
+
     private var noticeText: String {
         if store.level == .critical {
-            return "额度可能已接近耗尽。"
+            return store.t("额度可能已接近耗尽。", "Quota might be running out soon.")
         }
         if store.level == .low {
-            return "额度偏低，建议留意后续任务。"
+            return store.t("额度偏低，建议留意后续任务。", "Low quota, pay attention to subsequent tasks.")
         }
-        return "暂未读取到精确额度。"
+        return store.t("暂未读取到精确额度。", "No accurate quota read yet.")
     }
 
     private var noticeColor: Color {
@@ -221,6 +283,7 @@ struct ContentView: View {
 }
 
 private struct QuotaWindowView: View {
+    @EnvironmentObject private var store: QuotaStore
     let window: QuotaWindowSnapshot
     let isBottleneck: Bool
     let level: QuotaLevel
@@ -232,11 +295,11 @@ private struct QuotaWindowView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(window.kind.rawValue)
+                Text(window.kind.localizedName(lang: store.language))
                     .font(.subheadline.weight(.semibold))
                 Spacer()
                 if isBottleneck {
-                    Text("瓶颈")
+                    Text(store.t("瓶颈", "Bottleneck"))
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(level.color)
                         .padding(.horizontal, 6)
@@ -244,7 +307,7 @@ private struct QuotaWindowView: View {
                         .background(level.color.opacity(0.12), in: Capsule())
                         .help(helpText)
                 }
-                Text(level.rawValue)
+                Text(level.localizedName(lang: store.language))
                     .font(.caption.weight(.medium))
                     .foregroundStyle(level.color)
             }
@@ -253,10 +316,10 @@ private struct QuotaWindowView: View {
                 .tint(level.color)
 
             HStack(alignment: .firstTextBaseline) {
-                LabelValue(label: "已用", value: usedText, valueColor: level.color)
-                LabelValue(label: "剩余", value: remainingText)
+                LabelValue(label: store.t("已用", "Used"), value: usedText, valueColor: level.color)
+                LabelValue(label: store.t("剩余", "Rem"), value: remainingText)
                 Spacer()
-                LabelValue(label: "重置", value: resetText)
+                LabelValue(label: store.t("重置", "Reset"), value: resetText)
             }
         }
         .padding(10)
@@ -304,7 +367,7 @@ private struct LabelValue: View {
     var valueColor: Color = .primary
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 3) {
             Text(label)
                 .foregroundStyle(.secondary)
             Text(value)
@@ -312,5 +375,7 @@ private struct LabelValue: View {
                 .monospacedDigit()
         }
         .font(.caption)
+        .lineLimit(1)
+        .minimumScaleFactor(0.85)
     }
 }

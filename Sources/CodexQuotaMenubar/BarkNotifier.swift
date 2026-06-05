@@ -66,9 +66,12 @@ struct BarkNotifier: Sendable {
             "body": body,
             "group": "Codex Quota",
             "level": "timeSensitive",
+            "icon": appIconURL,
         ])
         return request
     }
+
+    private static let appIconURL = "https://dy-retail.oss-cn-beijing.aliyuncs.com/resource/20260605T083230-14e2518c-app-icon.png"
 
     private static func normalizeDeviceKey(_ deviceKey: String) -> String {
         let trimmedDeviceKey = deviceKey.trimmingCharacters(in: .whitespacesAndNewlines)

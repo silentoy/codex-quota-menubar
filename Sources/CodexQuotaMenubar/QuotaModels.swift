@@ -1,12 +1,30 @@
 import Foundation
 import SwiftUI
 
+enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
+    case zh = "简体中文"
+    case en = "English"
+
+    var id: String { rawValue }
+}
+
 enum QuotaSource: String, CaseIterable, Identifiable, Sendable {
     case codexAuth = "Codex 登录态"
     case local = "本机状态"
     case manual = "手动填写"
 
     var id: String { rawValue }
+
+    func localizedName(lang: AppLanguage) -> String {
+        switch self {
+        case .codexAuth:
+            return lang == .en ? "Codex Auth" : "Codex 登录态"
+        case .local:
+            return lang == .en ? "Local State" : "本机状态"
+        case .manual:
+            return lang == .en ? "Manual Input" : "手动填写"
+        }
+    }
 }
 
 enum DisplayMode: String, CaseIterable, Identifiable, Sendable {
@@ -14,6 +32,15 @@ enum DisplayMode: String, CaseIterable, Identifiable, Sendable {
     case percentage = "百分比"
 
     var id: String { rawValue }
+
+    func localizedName(lang: AppLanguage) -> String {
+        switch self {
+        case .ring:
+            return lang == .en ? "Ring" : "圆环"
+        case .percentage:
+            return lang == .en ? "Percentage" : "百分比"
+        }
+    }
 }
 
 enum BottleneckMode: String, CaseIterable, Identifiable, Sendable {
@@ -21,6 +48,15 @@ enum BottleneckMode: String, CaseIterable, Identifiable, Sendable {
     case smart = "按使用趋势"
 
     var id: String { rawValue }
+
+    func localizedName(lang: AppLanguage) -> String {
+        switch self {
+        case .percentage:
+            return lang == .en ? "By Remaining %" : "按剩余百分比"
+        case .smart:
+            return lang == .en ? "By Usage Trend" : "按使用趋势"
+        }
+    }
 }
 
 enum QuotaLevel: String, Sendable {
@@ -28,6 +64,19 @@ enum QuotaLevel: String, Sendable {
     case low = "额度偏低"
     case critical = "接近耗尽"
     case unknown = "未知"
+
+    func localizedName(lang: AppLanguage) -> String {
+        switch self {
+        case .normal:
+            return lang == .en ? "Normal" : "正常"
+        case .low:
+            return lang == .en ? "Low Quota" : "额度偏低"
+        case .critical:
+            return lang == .en ? "Critical" : "接近耗尽"
+        case .unknown:
+            return lang == .en ? "Unknown" : "未知"
+        }
+    }
 
     var color: Color {
         switch self {
@@ -63,6 +112,15 @@ extension Color {
 enum QuotaWindowKind: String, Sendable {
     case fiveHour = "5 小时额度"
     case weekly = "周额度"
+
+    func localizedName(lang: AppLanguage) -> String {
+        switch self {
+        case .fiveHour:
+            return lang == .en ? "5-Hour Quota" : "5 小时额度"
+        case .weekly:
+            return lang == .en ? "Weekly Quota" : "周额度"
+        }
+    }
 }
 
 struct QuotaWindowSnapshot: Sendable {
@@ -255,7 +313,8 @@ enum QuotaUsageFrequencyPredictor {
         from start: Date,
         resetAt: Date?,
         buckets: [QuotaUsageHourBucket],
-        calendar: Calendar = .current
+        calendar: Calendar = .current,
+        lang: AppLanguage = .zh
     ) -> QuotaUsagePrediction {
         guard let resetAt, resetAt > start, !buckets.isEmpty else {
             return QuotaUsagePrediction(
@@ -263,7 +322,7 @@ enum QuotaUsageFrequencyPredictor {
                 matchedHourCount: 0,
                 fallbackHourCount: 0,
                 consideredHourCount: 0,
-                matchDescription: "历史不足"
+                matchDescription: lang == .en ? "Insufficient history" : "历史不足"
             )
         }
 
@@ -305,11 +364,11 @@ enum QuotaUsageFrequencyPredictor {
 
         let description: String
         if matched > 0 {
-            description = "周中/周末同小时"
+            description = lang == .en ? "Same hour (weekday/weekend)" : "周中/周末同小时"
         } else if fallback > 0 {
-            description = "相同小时"
+            description = lang == .en ? "Same hour" : "相同小时"
         } else {
-            description = "历史不足"
+            description = lang == .en ? "Insufficient history" : "历史不足"
         }
 
         return QuotaUsagePrediction(
@@ -336,17 +395,19 @@ enum QuotaBottleneckEvaluator {
         historyRecords: [QuotaHistoryRecord],
         usageBuckets: [QuotaUsageHourBucket] = [],
         mode: BottleneckMode,
+        lang: AppLanguage = .zh,
         now: Date = Date(),
         calendar: Calendar = .current
     ) -> QuotaBottleneckEvaluation {
         switch mode {
         case .percentage:
-            return percentageEvaluation(for: snapshot)
+            return percentageEvaluation(for: snapshot, lang: lang)
         case .smart:
             return smartEvaluation(
                 for: snapshot,
                 historyRecords: historyRecords,
                 usageBuckets: usageBuckets,
+                lang: lang,
                 now: now,
                 calendar: calendar
             )
@@ -402,15 +463,23 @@ enum QuotaBottleneckEvaluator {
         return weightedPercent / weightedHours
     }
 
-    private static func percentageEvaluation(for snapshot: QuotaSnapshot) -> QuotaBottleneckEvaluation {
+    private static func percentageEvaluation(for snapshot: QuotaSnapshot, lang: AppLanguage = .zh) -> QuotaBottleneckEvaluation {
         let windows = snapshot.bottleneckWindows
         let percent = snapshot.bottleneckRemainingPercent
-        let text = snapshot.bottleneckText
+        let text = text(for: windows, lang: lang)
         let explanation: String
-        if let percent {
-            explanation = "当前按剩余额度百分比判断瓶颈，剩余百分比最低的窗口会被标记为瓶颈。\(text) 当前剩余 \(percent)% 。"
+        if lang == .en {
+            if let percent {
+                explanation = "Currently assessing bottleneck by remaining percentage. The window with the lowest percentage remaining is identified as the bottleneck. \(text) currently has \(percent)% remaining."
+            } else {
+                explanation = "Currently assessing bottleneck by remaining percentage, but no accurate quota has been read yet."
+            }
         } else {
-            explanation = "当前按剩余额度百分比判断瓶颈，但暂未读取到精确额度。"
+            if let percent {
+                explanation = "当前按剩余额度百分比判断瓶颈，剩余百分比最低的窗口会被标记为瓶颈。\(text) 当前剩余 \(percent)% 。"
+            } else {
+                explanation = "当前按剩余额度百分比判断瓶颈，但暂未读取到精确额度。"
+            }
         }
 
         return QuotaBottleneckEvaluation(
@@ -426,6 +495,7 @@ enum QuotaBottleneckEvaluator {
         for snapshot: QuotaSnapshot,
         historyRecords: [QuotaHistoryRecord],
         usageBuckets: [QuotaUsageHourBucket],
+        lang: AppLanguage,
         now: Date,
         calendar: Calendar
     ) -> QuotaBottleneckEvaluation {
@@ -435,14 +505,15 @@ enum QuotaBottleneckEvaluator {
                 windows: [],
                 remainingPercent: nil,
                 resetAt: nil,
-                text: "未知",
-                explanation: "当前按使用趋势判断瓶颈，但暂未读取到精确额度。"
+                text: lang == .en ? "Unknown" : "未知",
+                explanation: lang == .en ? "Currently assessing bottleneck by usage trend, but no accurate quota has been read yet." : "当前按使用趋势判断瓶颈，但暂未读取到精确额度。"
             )
         }
 
         if let usageEvaluation = usageFrequencyEvaluation(
             for: knownWindows,
             buckets: usageBuckets,
+            lang: lang,
             now: now,
             calendar: calendar
         ) {
@@ -458,20 +529,21 @@ enum QuotaBottleneckEvaluator {
             let winners = deficitScores.filter {
                 $0.timeToDrainHours.map { abs($0 - minTTD) < 0.0001 } ?? false
             }
-            return result(from: winners, reason: .deficit)
+            return result(from: winners, reason: .deficit, lang: lang)
         }
 
         if let maxSupport = scores.map(\.supportScore).max() {
             let winners = scores.filter { abs($0.supportScore - maxSupport) < 0.0001 }
-            return result(from: winners, reason: .support)
+            return result(from: winners, reason: .support, lang: lang)
         }
 
-        return percentageEvaluation(for: snapshot)
+        return percentageEvaluation(for: snapshot, lang: lang)
     }
 
     private static func usageFrequencyEvaluation(
         for windows: [QuotaWindowSnapshot],
         buckets: [QuotaUsageHourBucket],
+        lang: AppLanguage,
         now: Date,
         calendar: Calendar
     ) -> QuotaBottleneckEvaluation? {
@@ -484,7 +556,8 @@ enum QuotaBottleneckEvaluator {
                 from: now,
                 resetAt: window.resetAt,
                 buckets: buckets,
-                calendar: calendar
+                calendar: calendar,
+                lang: lang
             )
             guard prediction.predictedConsumption > Double(percent) else { return nil }
             let baseRiskRatio = prediction.predictedConsumption / max(0.5, Double(percent))
@@ -502,19 +575,26 @@ enum QuotaBottleneckEvaluator {
 
         let winners = risks.filter { abs($0.riskRatio - maxRisk) < 0.0001 }
         let windows = winners.map { $0.window.kind }
-        let text = text(for: windows)
+        let text = text(for: windows, lang: lang)
         let percent = winners.compactMap { $0.window.percentRemaining }.min()
         let resetAt = winners.compactMap { $0.window.resetAt }.min()
         let first = winners[0]
         let expected = (first.prediction.predictedConsumption * 10).rounded() / 10
-        let remaining = percent.map(String.init) ?? "未知"
+        let remaining = percent.map(String.init) ?? (lang == .en ? "Unknown" : "未知")
+
+        let explanation: String
+        if lang == .en {
+            explanation = "\(text) predicted as current bottleneck based on weekday/weekend hourly habits of the last 30 days: \(first.prediction.matchDescription). Expected consumption is approx \(expected)%, currently \(remaining)% remaining."
+        } else {
+            explanation = "\(text) 按最近 30 天周中/周末小时习惯预测为当前瓶颈：\(first.prediction.matchDescription)预计消耗约 \(expected)%，当前剩余 \(remaining)% 。"
+        }
 
         return QuotaBottleneckEvaluation(
             windows: windows,
             remainingPercent: percent,
             resetAt: resetAt,
             text: text,
-            explanation: "\(text) 按最近 30 天周中/周末小时习惯预测为当前瓶颈：\(first.prediction.matchDescription)预计消耗约 \(expected)%，当前剩余 \(remaining)% 。"
+            explanation: explanation
         )
     }
 
@@ -550,20 +630,30 @@ enum QuotaBottleneckEvaluator {
         )
     }
 
-    private static func result(from scores: [WindowScore], reason: SmartReason) -> QuotaBottleneckEvaluation {
+    private static func result(from scores: [WindowScore], reason: SmartReason, lang: AppLanguage) -> QuotaBottleneckEvaluation {
         let windows = scores.map { $0.window.kind }
-        let text = text(for: windows)
+        let text = text(for: windows, lang: lang)
         let percent = scores.compactMap { $0.window.percentRemaining }.min()
         let resetAt = scores.compactMap { $0.window.resetAt }.min()
         let first = scores[0]
         let explanation: String
 
-        switch reason {
-        case .deficit:
-            let ttdText = first.timeToDrainHours.map { formatHours($0) } ?? "未知"
-            explanation = "\(text) 是当前使用趋势下的主要限制：按最近消耗速度预计 \(ttdText) 后用尽，早于重置时间。"
-        case .support:
-            explanation = "\(text) 重置周期内剩余额度相对紧张（归一化支撑度 \(formatSupportScore(first.supportScore))），是当前使用的主要限制。"
+        if lang == .en {
+            switch reason {
+            case .deficit:
+                let ttdText = first.timeToDrainHours.map { formatHours($0, lang: lang) } ?? "Unknown"
+                explanation = "\(text) is the main limitation under current usage trend: expected to be drained in \(ttdText) based on recent consumption rate, which is earlier than the reset time."
+            case .support:
+                explanation = "\(text) is relatively tight within the reset cycle (normalized support score \(formatSupportScore(first.supportScore))), which is the main limitation of current usage."
+            }
+        } else {
+            switch reason {
+            case .deficit:
+                let ttdText = first.timeToDrainHours.map { formatHours($0, lang: lang) } ?? "未知"
+                explanation = "\(text) 是当前使用趋势下的主要限制：按最近消耗速度预计 \(ttdText) 后用尽，早于重置时间。"
+            case .support:
+                explanation = "\(text) 重置周期内剩余额度相对紧张（归一化支撑度 \(formatSupportScore(first.supportScore))），是当前使用的主要限制。"
+            }
         }
 
         return QuotaBottleneckEvaluation(
@@ -575,29 +665,30 @@ enum QuotaBottleneckEvaluator {
         )
     }
 
-    private static func text(for windows: [QuotaWindowKind]) -> String {
+    private static func text(for windows: [QuotaWindowKind], lang: AppLanguage = .zh) -> String {
         switch windows {
         case []:
-            return "未知"
+            return lang == .en ? "Unknown" : "未知"
         case [.fiveHour]:
-            return QuotaWindowKind.fiveHour.rawValue
+            return QuotaWindowKind.fiveHour.localizedName(lang: lang)
         case [.weekly]:
-            return QuotaWindowKind.weekly.rawValue
+            return QuotaWindowKind.weekly.localizedName(lang: lang)
         default:
-            return "并列瓶颈"
+            return lang == .en ? "Multiple Bottlenecks" : "并列瓶颈"
         }
     }
 
-    private static func formatHours(_ hours: Double) -> String {
+    private static func formatHours(_ hours: Double, lang: AppLanguage = .zh) -> String {
         if hours < 1 {
-            return "\(max(1, Int((hours * 60).rounded()))) 分钟"
+            let minutes = max(1, Int((hours * 60).rounded()))
+            return lang == .en ? "\(minutes) minute\(minutes > 1 ? "s" : "")" : "\(minutes) 分钟"
         }
         if hours < 24 {
             let rounded = (hours * 10).rounded() / 10
-            return "\(rounded) 小时"
+            return lang == .en ? "\(rounded) hour\(rounded > 1 ? "s" : "")" : "\(rounded) 小时"
         }
         let days = (hours / 24 * 10).rounded() / 10
-        return "\(days) 天"
+        return lang == .en ? "\(days) day\(days > 1 ? "s" : "")" : "\(days) 天"
     }
 
     private static func formatSupportScore(_ score: Double) -> String {

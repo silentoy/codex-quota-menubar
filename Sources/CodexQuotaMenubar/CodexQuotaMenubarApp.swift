@@ -9,7 +9,7 @@ struct CodexQuotaMenubarApp: App {
         MenuBarExtra {
             ContentView()
                 .environmentObject(store)
-                .frame(width: 280)
+                .frame(width: 290)
                 .onAppear {
                     store.refreshIfStale()
                 }
