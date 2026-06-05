@@ -31,18 +31,39 @@ final class QuotaStore: ObservableObject {
     @AppStorage("launchAtLogin") var launchAtLogin = false {
         willSet { objectWillChange.send() }
     }
+    @AppStorage("telegramEnabled") var telegramEnabled = false {
+        willSet { objectWillChange.send() }
+    }
+    @AppStorage("telegramChatID") var telegramChatID = "" {
+        willSet { objectWillChange.send() }
+    }
+    @AppStorage("telegramNotifyFiveHourReset") var telegramNotifyFiveHourReset = true {
+        willSet { objectWillChange.send() }
+    }
+    @AppStorage("telegramNotifyWeeklyReset") var telegramNotifyWeeklyReset = true {
+        willSet { objectWillChange.send() }
+    }
+    @AppStorage("telegramNotifiedResetIDs") private var telegramNotifiedResetIDsRaw = "" {
+        willSet { objectWillChange.send() }
+    }
 
     @Published private(set) var snapshot: QuotaSnapshot = .unknown(
         source: .codexAuth,
         detail: "等待首次刷新。"
     )
     @Published private(set) var isRefreshing = false
+    @Published private(set) var isSendingTelegramTest = false
     @Published private(set) var statusMessage = "等待首次刷新。"
+    @Published var telegramBotToken = "" {
+        willSet { objectWillChange.send() }
+    }
 
     private var timer: Timer?
     private var lastManualRefreshAt: Date?
+    private let telegramNotifier = TelegramNotifier()
 
     init() {
+        telegramBotToken = KeychainTokenStore.loadTelegramBotToken()
         if !didDefaultCodexAuthSource {
             sourceRaw = QuotaSource.codexAuth.rawValue
             didDefaultCodexAuthSource = true
@@ -92,22 +113,22 @@ final class QuotaStore: ObservableObject {
     }
 
     var resetText: String {
-        dateText(snapshot.resetAt)
+        QuotaResetDateFormatter.text(for: snapshot.resetAt, kind: snapshot.bottleneck ?? .fiveHour)
     }
 
     var bottleneckText: String {
-        snapshot.bottleneck?.rawValue ?? "未知"
+        snapshot.bottleneckText
+    }
+
+    var bottleneckSummaryText: String {
+        guard let percent = snapshot.bottleneckRemainingPercent else {
+            return "暂未读取到精确额度。"
+        }
+        return "\(snapshot.bottleneckText) · 剩余 \(percent)% · \(resetText)"
     }
 
     func level(for percent: Int?) -> QuotaLevel {
-        guard let percent else { return .unknown }
-        if percent <= 5 {
-            return .critical
-        }
-        if percent <= lowThreshold {
-            return .low
-        }
-        return .normal
+        QuotaLevel.classify(percent: percent, lowThreshold: lowThreshold)
     }
 
     func percentText(_ percent: Int?) -> String {
@@ -115,7 +136,7 @@ final class QuotaStore: ObservableObject {
     }
 
     func resetText(for window: QuotaWindowSnapshot) -> String {
-        dateText(window.resetAt)
+        QuotaResetDateFormatter.text(for: window.resetAt, kind: window.kind)
     }
 
     func accessibilityLabel() -> String {
@@ -154,6 +175,7 @@ final class QuotaStore: ObservableObject {
 
         let provider = makeProvider()
         let result = await provider.fetch()
+        let previousSnapshot = snapshot
 
         if result.failed, snapshot.percentRemaining != nil, !force {
             statusMessage = "读取失败，显示上次结果。"
@@ -168,7 +190,29 @@ final class QuotaStore: ObservableObject {
             }
         }
 
+        if !result.failed {
+            await sendQuotaResetNotifications(previous: previousSnapshot, current: result)
+        }
+
         isRefreshing = false
+    }
+
+    func saveTelegramBotToken(_ token: String) {
+        telegramBotToken = token
+        do {
+            try KeychainTokenStore.saveTelegramBotToken(token)
+        } catch {
+            statusMessage = "保存 Telegram Token 失败。"
+        }
+    }
+
+    func sendTelegramTestMessage() {
+        guard !isSendingTelegramTest else { return }
+        isSendingTelegramTest = true
+        Task {
+            _ = await sendTelegramMessage("Codex Quota Telegram 测试消息。")
+            isSendingTelegramTest = false
+        }
     }
 
     func openCodex() {
@@ -252,14 +296,56 @@ final class QuotaStore: ObservableObject {
         CodexAuthUsageProvider()
     }
 
-    private func dateText(_ date: Date?) -> String {
-        guard let date else {
-            return "未知"
+    private func sendQuotaResetNotifications(previous: QuotaSnapshot, current: QuotaSnapshot) async {
+        guard telegramEnabled else { return }
+
+        let events = QuotaResetNotificationDetector.events(
+            previous: previous,
+            current: current,
+            notifiedResetIDs: notifiedResetIDs
+        )
+        let enabledEvents = events.filter { event in
+            switch event.kind {
+            case .fiveHour:
+                return telegramNotifyFiveHourReset
+            case .weekly:
+                return telegramNotifyWeeklyReset
+            }
         }
-        if Calendar.current.component(.year, from: date) == Calendar.current.component(.year, from: Date()) {
-            return Self.sameYearDateFormatter.string(from: date)
+        guard !enabledEvents.isEmpty else { return }
+
+        for event in enabledEvents {
+            if await sendTelegramMessage(event.message) {
+                rememberNotifiedResetID(event.resetID)
+            }
         }
-        return Self.crossYearDateFormatter.string(from: date)
+    }
+
+    private func sendTelegramMessage(_ message: String) async -> Bool {
+        do {
+            try await telegramNotifier.send(
+                token: telegramBotToken,
+                chatID: telegramChatID,
+                text: message
+            )
+            statusMessage = "已发送 Telegram 通知。"
+            return true
+        } catch TelegramNotificationError.missingConfiguration {
+            statusMessage = "请先填写 Telegram Token 和 Chat ID。"
+        } catch {
+            statusMessage = "Telegram 通知发送失败。"
+        }
+        return false
+    }
+
+    private var notifiedResetIDs: Set<String> {
+        Set(telegramNotifiedResetIDsRaw.split(separator: "\n").map(String.init))
+    }
+
+    private func rememberNotifiedResetID(_ resetID: String) {
+        var ids = Array(notifiedResetIDs)
+        ids.append(resetID)
+        telegramNotifiedResetIDsRaw = ids.suffix(50).joined(separator: "\n")
     }
 
     private func startTimer() {
@@ -291,20 +377,4 @@ final class QuotaStore: ObservableObject {
         formatter.unitsStyle = .full
         return formatter
     }()
-
-    private static let sameYearDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_CN")
-        formatter.dateFormat = "M/d HH:mm"
-        return formatter
-    }()
-
-    private static let crossYearDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_CN")
-        formatter.dateFormat = "yyyy/M/d HH:mm"
-        return formatter
-    }()
-
-    private static let isoFormatter = ISO8601DateFormatter()
 }

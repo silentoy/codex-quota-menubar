@@ -34,6 +34,17 @@ enum QuotaLevel: String, Sendable {
             return .secondary
         }
     }
+
+    static func classify(percent: Int?, lowThreshold: Int) -> QuotaLevel {
+        guard let percent else { return .unknown }
+        if percent <= 5 {
+            return .critical
+        }
+        if percent <= lowThreshold {
+            return .low
+        }
+        return .normal
+    }
 }
 
 extension Color {
@@ -74,25 +85,42 @@ struct QuotaSnapshot: Sendable {
         return values.min()
     }
 
+    var bottleneckRemainingPercent: Int? {
+        percentRemaining
+    }
+
+    var bottleneckWindows: [QuotaWindowKind] {
+        guard let percentRemaining else { return [] }
+        return [fiveHour, weekly]
+            .filter { $0.percentRemaining == percentRemaining }
+            .map(\.kind)
+    }
+
+    var bottleneckText: String {
+        switch bottleneckWindows {
+        case []:
+            return "未知"
+        case [.fiveHour]:
+            return QuotaWindowKind.fiveHour.rawValue
+        case [.weekly]:
+            return QuotaWindowKind.weekly.rawValue
+        default:
+            return "并列瓶颈"
+        }
+    }
+
     var resetAt: Date? {
-        if fiveHour.percentRemaining == percentRemaining {
-            return fiveHour.resetAt
-        }
-        if weekly.percentRemaining == percentRemaining {
-            return weekly.resetAt
-        }
-        return fiveHour.resetAt ?? weekly.resetAt
+        matchingBottleneckWindows.compactMap(\.resetAt).min()
     }
 
     var bottleneck: QuotaWindowKind? {
-        guard let percentRemaining else { return nil }
-        if fiveHour.percentRemaining == percentRemaining {
-            return .fiveHour
-        }
-        if weekly.percentRemaining == percentRemaining {
-            return .weekly
-        }
-        return nil
+        let windows = bottleneckWindows
+        return windows.count == 1 ? windows.first : nil
+    }
+
+    private var matchingBottleneckWindows: [QuotaWindowSnapshot] {
+        guard let percentRemaining else { return [] }
+        return [fiveHour, weekly].filter { $0.percentRemaining == percentRemaining }
     }
 
     static func unknown(source: QuotaSource, detail: String, failed: Bool = false) -> QuotaSnapshot {

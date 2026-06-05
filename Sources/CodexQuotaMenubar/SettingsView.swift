@@ -5,8 +5,8 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            Section {
-                branding
+            Section("预览") {
+                preview
             }
 
             Section("通用") {
@@ -39,6 +39,38 @@ struct SettingsView: View {
                 .pickerStyle(.segmented)
             }
 
+            Section("Telegram 推送") {
+                Toggle("启用 Telegram 推送", isOn: $store.telegramEnabled)
+
+                SecureField("Bot Token", text: telegramBotTokenBinding)
+                    .textContentType(.password)
+
+                TextField("Chat ID", text: $store.telegramChatID)
+
+                Toggle("5 小时额度重置提醒", isOn: $store.telegramNotifyFiveHourReset)
+                Toggle("周额度重置提醒", isOn: $store.telegramNotifyWeeklyReset)
+
+                Button {
+                    store.sendTelegramTestMessage()
+                } label: {
+                    if store.isSendingTelegramTest {
+                        HStack {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("发送中")
+                        }
+                    } else {
+                        Label("发送测试消息", systemImage: "paperplane")
+                    }
+                }
+                .disabled(store.isSendingTelegramTest)
+
+                Text("Token 保存在 macOS Keychain；重置原因来自本地推断，非到期场景会标注“疑似”。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Section {
                 Text("通过 ~/.codex/auth.json 读取登录态数据。\n开机启动需以 .app 形式运行。")
                     .font(.caption)
@@ -55,30 +87,50 @@ struct SettingsView: View {
 
     // MARK: - Subviews
 
-    private var branding: some View {
-        HStack {
-            Spacer()
-            VStack(spacing: 6) {
-                if let appIcon = NSApp.applicationIconImage {
-                    Image(nsImage: appIcon)
-                        .resizable()
-                        .frame(width: 48, height: 48)
-                } else {
-                    Image(systemName: "gauge.with.dots.needle.67percent")
-                        .font(.system(size: 36))
-                        .foregroundStyle(.tint)
-                }
+    private var preview: some View {
+        HStack(spacing: 12) {
+            previewBadge
 
-                Text("Codex Quota")
-                    .font(.title2.weight(.semibold))
+            VStack(alignment: .leading, spacing: 4) {
+                Text("菜单栏显示")
+                    .font(.subheadline.weight(.semibold))
 
-                Text("v\(appVersion)")
+                Text("低于 \(store.lowThreshold)% 时显示橙色提醒，5% 以下显示红色。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
             Spacer()
         }
-        .padding(.vertical, 4)
+        .padding(10)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(thresholdColor.opacity(0.22), lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private var previewBadge: some View {
+        if store.displayMode == .ring {
+            QuotaRingsIcon(
+                snapshot: previewSnapshot,
+                lowThreshold: store.lowThreshold,
+                isRefreshing: false,
+                style: .menuBar
+            )
+            .frame(width: 28, height: 28)
+            .padding(6)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        } else {
+            Text("Codex 18%")
+                .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                .monospacedDigit()
+                .foregroundStyle(previewLevelColor)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        }
     }
 
     // MARK: - Helpers
@@ -91,16 +143,31 @@ struct SettingsView: View {
         }
     }
 
-    private var thresholdColor: Color {
-        if store.lowThreshold <= 10 {
-            return .red
-        } else if store.lowThreshold <= 30 {
-            return .orange
+    private var telegramBotTokenBinding: Binding<String> {
+        Binding {
+            store.telegramBotToken
+        } set: { token in
+            store.saveTelegramBotToken(token)
         }
-        return .green
     }
 
-    private var appVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
+    private var thresholdColor: Color {
+        .quotaLow
     }
+
+    private var previewLevelColor: Color {
+        QuotaLevel.classify(percent: 18, lowThreshold: store.lowThreshold).color
+    }
+
+    private var previewSnapshot: QuotaSnapshot {
+        QuotaSnapshot(
+            fiveHour: QuotaWindowSnapshot(kind: .fiveHour, percentRemaining: 18, resetAt: nil),
+            weekly: QuotaWindowSnapshot(kind: .weekly, percentRemaining: 61, resetAt: nil),
+            source: .codexAuth,
+            detail: "",
+            capturedAt: Date(),
+            failed: false
+        )
+    }
+
 }

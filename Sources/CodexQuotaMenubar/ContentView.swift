@@ -7,6 +7,7 @@ struct ContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
+            bottleneckHero
             quotaSections
             summaryRows
             notice
@@ -14,6 +15,7 @@ struct ContentView: View {
             footer
         }
         .padding(14)
+        .background(.regularMaterial)
     }
 
     private var header: some View {
@@ -45,6 +47,7 @@ struct ContentView: View {
         VStack(spacing: 10) {
             QuotaWindowView(
                 window: store.snapshot.fiveHour,
+                isBottleneck: store.snapshot.bottleneckWindows.contains(.fiveHour),
                 level: store.level(for: store.snapshot.fiveHour.percentRemaining),
                 usedText: store.percentText(store.snapshot.fiveHour.percentUsed),
                 remainingText: store.percentText(store.snapshot.fiveHour.percentRemaining),
@@ -52,6 +55,7 @@ struct ContentView: View {
             )
             QuotaWindowView(
                 window: store.snapshot.weekly,
+                isBottleneck: store.snapshot.bottleneckWindows.contains(.weekly),
                 level: store.level(for: store.snapshot.weekly.percentRemaining),
                 usedText: store.percentText(store.snapshot.weekly.percentUsed),
                 remainingText: store.percentText(store.snapshot.weekly.percentRemaining),
@@ -60,9 +64,35 @@ struct ContentView: View {
         }
     }
 
+    private var bottleneckHero: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Image(systemName: store.level == .normal ? "gauge.with.dots.needle.67percent" : "exclamationmark.triangle.fill")
+                .foregroundStyle(store.menuColor)
+                .frame(width: 18)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("当前瓶颈")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(store.bottleneckSummaryText)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(store.menuColor)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(store.menuColor.opacity(0.22), lineWidth: 1)
+        )
+    }
+
     private var summaryRows: some View {
         VStack(spacing: 8) {
-            InfoRow(label: "当前瓶颈", value: store.bottleneckText, valueColor: store.menuColor)
             InfoRow(label: "最后刷新", value: store.lastRefreshText)
             InfoRow(label: "数据来源", value: store.snapshot.source.rawValue)
         }
@@ -73,35 +103,61 @@ struct ContentView: View {
         if store.level == .low || store.level == .critical || store.snapshot.percentRemaining == nil {
             Text(noticeText)
                 .font(.caption)
-                .foregroundStyle(store.menuColor)
+                .foregroundStyle(noticeColor)
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(store.menuColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(noticeColor.opacity(0.24), lineWidth: 1)
+                )
         }
     }
 
     private var actions: some View {
-        HStack {
+        HStack(spacing: 8) {
             Button {
                 store.manualRefresh()
             } label: {
                 if store.isRefreshing {
-                    ProgressView()
-                        .controlSize(.small)
+                    HStack(spacing: 5) {
+                        ProgressView()
+                            .controlSize(.small)
+                            .frame(width: 13, height: 13)
+                        Text("刷新中")
+                            .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity)
                 } else {
-                    Text("刷新")
+                    Label("刷新", systemImage: "arrow.clockwise")
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity)
                 }
             }
+            .controlSize(.regular)
+            .disabled(store.isRefreshing)
+            .frame(maxWidth: .infinity)
 
-            Button("打开 Codex") {
+            Button {
                 store.openCodex()
+            } label: {
+                Label("Codex", systemImage: "app.badge")
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity)
             }
+            .controlSize(.regular)
+            .accessibilityLabel("打开 Codex")
+            .frame(maxWidth: .infinity)
 
-            Button("设置") {
+            Button {
                 openSettings()
+            } label: {
+                Label("设置", systemImage: "gearshape")
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity)
             }
-
-            Spacer()
+            .controlSize(.regular)
+            .frame(maxWidth: .infinity)
         }
     }
 
@@ -132,10 +188,21 @@ struct ContentView: View {
         }
         return "暂未读取到精确额度。"
     }
+
+    private var noticeColor: Color {
+        if store.snapshot.failed {
+            return .quotaCritical
+        }
+        if store.snapshot.percentRemaining == nil {
+            return .secondary
+        }
+        return store.menuColor
+    }
 }
 
 private struct QuotaWindowView: View {
     let window: QuotaWindowSnapshot
+    let isBottleneck: Bool
     let level: QuotaLevel
     let usedText: String
     let remainingText: String
@@ -147,6 +214,14 @@ private struct QuotaWindowView: View {
                 Text(window.kind.rawValue)
                     .font(.subheadline.weight(.semibold))
                 Spacer()
+                if isBottleneck {
+                    Text("瓶颈")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(level.color)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(level.color.opacity(0.12), in: Capsule())
+                }
                 Text(level.rawValue)
                     .font(.caption.weight(.medium))
                     .foregroundStyle(level.color)
@@ -163,7 +238,19 @@ private struct QuotaWindowView: View {
             }
         }
         .padding(10)
-        .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 8))
+        .padding(.leading, isBottleneck ? 4 : 0)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(level.color)
+                .frame(width: isBottleneck ? 3 : 0)
+                .clipShape(Capsule())
+                .padding(.vertical, 8)
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(level.color.opacity(isBottleneck ? 0.32 : 0.12), lineWidth: 1)
+        )
     }
 
     private var progress: Double {
