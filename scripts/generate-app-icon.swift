@@ -51,10 +51,51 @@ func drawIcon(size: CGFloat) -> NSImage {
 
     let inset = max(1, size * 0.035)
     let radius = size * 0.23
-    let background = NSBezierPath(roundedRect: rect.insetBy(dx: inset, dy: inset), xRadius: radius, yRadius: radius)
-    NSColor(calibratedRed: 0.06, green: 0.20, blue: 0.12, alpha: 1).setFill()
+    let squircleRect = rect.insetBy(dx: inset, dy: inset)
+    
+    // 1. Draw Drop Shadow
+    NSGraphicsContext.current?.saveGraphicsState()
+    let shadow = NSShadow()
+    shadow.shadowColor = NSColor.black.withAlphaComponent(0.32)
+    shadow.shadowOffset = NSSize(width: 0, height: -size * 0.02)
+    shadow.shadowBlurRadius = size * 0.04
+    shadow.set()
+    
+    let background = NSBezierPath(roundedRect: squircleRect, xRadius: radius, yRadius: radius)
+    NSColor.black.withAlphaComponent(0.01).setFill() // Dummy fill to trigger shadow
     background.fill()
+    NSGraphicsContext.current?.restoreGraphicsState()
 
+    // 2. Draw Translucent Glass Gradient Background
+    NSGraphicsContext.current?.saveGraphicsState()
+    background.addClip()
+    
+    let bgGradient = NSGradient(
+        starting: NSColor(calibratedRed: 0.08, green: 0.24, blue: 0.14, alpha: 0.72), // Translucent green glass
+        ending: NSColor(calibratedRed: 0.03, green: 0.12, blue: 0.08, alpha: 0.88)
+    )
+    bgGradient?.draw(in: squircleRect, angle: -45)
+    
+    // 3. Draw Diagonal Glass Reflection (Light highlight)
+    let shinePath = NSBezierPath()
+    shinePath.move(to: NSPoint(x: squircleRect.minX, y: squircleRect.maxY))
+    shinePath.line(to: NSPoint(x: squircleRect.maxX, y: squircleRect.minY + squircleRect.height * 0.45))
+    shinePath.line(to: NSPoint(x: squircleRect.maxX, y: squircleRect.maxY))
+    shinePath.close()
+    
+    NSColor.white.withAlphaComponent(0.05).setFill()
+    shinePath.fill()
+    NSGraphicsContext.current?.restoreGraphicsState()
+
+    // 4. Draw Glass Bevel Edge Border
+    NSGraphicsContext.current?.saveGraphicsState()
+    let borderPath = NSBezierPath(roundedRect: squircleRect, xRadius: radius, yRadius: radius)
+    borderPath.lineWidth = max(1.0, size * 0.008)
+    NSColor.white.withAlphaComponent(0.18).setStroke()
+    borderPath.stroke()
+    NSGraphicsContext.current?.restoreGraphicsState()
+
+    // 5. Draw Inner Glow and Rings
     let innerGlow = NSBezierPath(ovalIn: rect.insetBy(dx: size * 0.18, dy: size * 0.18))
     NSColor(calibratedRed: 0.18, green: 0.42, blue: 0.24, alpha: 0.46).setFill()
     innerGlow.fill()

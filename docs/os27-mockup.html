@@ -1,0 +1,1123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Codex Quota · OS27 Liquid Glass Mockup</title>
+<style>
+  :root {
+    --bg-1: #d8dce6;
+    --bg-2: #b8c0d2;
+    --bg-3: #e8d8e8;
+    --panel-base: rgba(245, 246, 250, 0.72);
+    --card-base: rgba(255, 255, 255, 0.55);
+    --hero-base: rgba(255, 255, 255, 0.40);
+    --text: #1c1c1e;
+    --text-secondary: rgba(28, 28, 30, 0.62);
+    --text-tertiary: rgba(28, 28, 30, 0.42);
+    --edge-inner: rgba(255, 255, 255, 0.55);
+    --edge-outer: rgba(0, 0, 0, 0.08);
+    --hairline: rgba(0, 0, 0, 0.06);
+    --track: rgba(0, 0, 0, 0.06);
+    --shadow-amb: 0 18px 48px rgba(0, 0, 0, 0.18);
+    --shadow-cnt: 0 1px 2px rgba(0, 0, 0, 0.06);
+    --accent-normal: #34c759;
+    --accent-low: #ff9f0a;
+    --accent-critical: #ff453a;
+    --accent: var(--accent-normal);
+  }
+
+  [data-theme="dark"] {
+    --bg-1: #1a1d2a;
+    --bg-2: #0f1119;
+    --bg-3: #2a1d2e;
+    --panel-base: rgba(28, 28, 34, 0.65);
+    --card-base: rgba(58, 58, 66, 0.45);
+    --hero-base: rgba(40, 40, 48, 0.55);
+    --text: #f2f2f7;
+    --text-secondary: rgba(242, 242, 247, 0.62);
+    --text-tertiary: rgba(242, 242, 247, 0.40);
+    --edge-inner: rgba(255, 255, 255, 0.10);
+    --edge-outer: rgba(0, 0, 0, 0.40);
+    --hairline: rgba(255, 255, 255, 0.08);
+    --track: rgba(255, 255, 255, 0.08);
+    --shadow-amb: 0 18px 48px rgba(0, 0, 0, 0.55);
+    --shadow-cnt: 0 1px 2px rgba(0, 0, 0, 0.30);
+    --accent-normal: #30d158;
+    --accent-low: #ffb340;
+    --accent-critical: #ff6961;
+  }
+
+  [data-state="low"] { --accent: var(--accent-low); }
+  [data-state="critical"] { --accent: var(--accent-critical); }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", system-ui;
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    background:
+      radial-gradient(1200px 800px at 12% 8%, var(--bg-3), transparent 50%),
+      radial-gradient(1000px 700px at 88% 92%, var(--bg-2), transparent 55%),
+      linear-gradient(135deg, var(--bg-1), var(--bg-2));
+    transition: background 0.4s ease;
+  }
+
+  .stage {
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 32px;
+    padding: 32px;
+  }
+
+  /* ---------- Toolbar ---------- */
+  .toolbar {
+    position: sticky;
+    top: 32px;
+    align-self: start;
+    background: var(--panel-base);
+    backdrop-filter: blur(40px) saturate(180%);
+    -webkit-backdrop-filter: blur(40px) saturate(180%);
+    border-radius: 18px;
+    padding: 18px;
+    border: 0.5px solid var(--edge-outer);
+    box-shadow: var(--shadow-amb), inset 0 0.5px 0 var(--edge-inner);
+  }
+  .toolbar h1 {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    margin-bottom: 14px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+  }
+  .toolbar .group { margin-bottom: 16px; }
+  .toolbar .group-title {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin-bottom: 6px;
+  }
+  .toolbar button {
+    width: 100%;
+    text-align: left;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 0.5px solid transparent;
+    background: transparent;
+    color: var(--text);
+    font-size: 13px;
+    cursor: pointer;
+    margin-bottom: 4px;
+    font-family: inherit;
+    transition: background 0.18s, border-color 0.18s;
+  }
+  .toolbar button:hover {
+    background: rgba(127, 127, 127, 0.08);
+  }
+  .toolbar button.active {
+    background: rgba(127, 127, 127, 0.12);
+    border-color: var(--hairline);
+    font-weight: 600;
+  }
+
+  .meta {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 0.5px solid var(--hairline);
+    font-size: 11px;
+    color: var(--text-tertiary);
+    line-height: 1.5;
+  }
+
+  /* ---------- Canvas ---------- */
+  .canvas {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 24px 0;
+  }
+
+  /* ---------- Panel ---------- */
+  .panel {
+    width: 360px;
+    background: var(--panel-base);
+    backdrop-filter: blur(50px) saturate(180%);
+    -webkit-backdrop-filter: blur(50px) saturate(180%);
+    border-radius: 18px;
+    padding: 16px;
+    position: relative;
+    border: 0.5px solid var(--edge-outer);
+    box-shadow:
+      var(--shadow-amb),
+      var(--shadow-cnt),
+      inset 0 0.5px 0 var(--edge-inner);
+  }
+  .panel::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 18px;
+    pointer-events: none;
+    background: linear-gradient(180deg, rgba(255,255,255,0.08), transparent 12%);
+  }
+
+  /* ---------- Header ---------- */
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .rings {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background:
+      conic-gradient(var(--accent) 0 calc(var(--ring-outer, 65) * 1%), rgba(127,127,127,0.18) 0);
+    display: grid;
+    place-items: center;
+    box-shadow: 0 0 0 0.5px var(--edge-outer), 0 4px 10px rgba(0,0,0,0.10), 0 0 16px color-mix(in srgb, var(--accent) 25%, transparent);
+    position: relative;
+  }
+  .rings::after {
+    content: "";
+    position: absolute;
+    inset: 4px;
+    border-radius: 50%;
+    background: var(--panel-base);
+    backdrop-filter: blur(8px);
+  }
+  .rings .core {
+    position: relative;
+    z-index: 1;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
+  }
+  .header .text { flex: 1; min-width: 0; }
+  .header .title {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .header .status {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+    font-feature-settings: "tnum";
+  }
+  .pill {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    border: 0.5px solid color-mix(in srgb, var(--accent) 28%, transparent);
+    backdrop-filter: blur(20px);
+    box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.18);
+  }
+
+  /* ---------- Hero (Bottleneck) ---------- */
+  .hero {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px;
+    border-radius: 14px;
+    margin-bottom: 12px;
+    position: relative;
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--accent) 14%, transparent), color-mix(in srgb, var(--accent) 6%, transparent)),
+      var(--hero-base);
+    backdrop-filter: blur(30px) saturate(180%);
+    border: 0.5px solid color-mix(in srgb, var(--accent) 28%, transparent);
+    box-shadow:
+      0 12px 28px color-mix(in srgb, var(--accent) 22%, transparent),
+      0 1px 2px rgba(0,0,0,0.06),
+      inset 0 0.5px 0 rgba(255,255,255,0.30);
+  }
+  .hero::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 12px; right: 12px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.55), transparent);
+    border-radius: 1px;
+  }
+  .hero .icon {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
+    color: var(--accent);
+    display: grid;
+    place-items: center;
+    font-size: 14px;
+    flex-shrink: 0;
+    border: 0.5px solid color-mix(in srgb, var(--accent) 32%, transparent);
+  }
+  .hero .body { flex: 1; min-width: 0; }
+  .hero .label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    display: flex;
+    gap: 6px;
+    align-items: baseline;
+    margin-bottom: 2px;
+  }
+  .hero .label .mode {
+    font-size: 10px;
+    color: var(--text-tertiary);
+  }
+  .hero .summary {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: -0.01em;
+    font-feature-settings: "tnum";
+  }
+
+  /* ---------- Quota cards ---------- */
+  .cards { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+  .card {
+    padding: 12px;
+    border-radius: 14px;
+    background: var(--card-base);
+    backdrop-filter: blur(30px) saturate(180%);
+    border: 0.5px solid var(--edge-outer);
+    box-shadow: inset 0 0.5px 0 var(--edge-inner), 0 1px 2px rgba(0,0,0,0.04);
+    position: relative;
+    overflow: hidden;
+  }
+  .card.bottleneck::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 8px; bottom: 8px;
+    width: 3px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, var(--card-accent, var(--accent)), color-mix(in srgb, var(--card-accent, var(--accent)) 55%, transparent));
+    box-shadow: 0 0 6px color-mix(in srgb, var(--card-accent, var(--accent)) 35%, transparent);
+  }
+  .card.bottleneck { padding-left: 14px; }
+
+  .card-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .card-head .name {
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .card-head .grow { flex: 1; }
+  .card-head .badge {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--card-accent, var(--accent));
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--card-accent, var(--accent)) 14%, transparent);
+  }
+  .card-head .level {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--card-accent, var(--accent));
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .progress {
+    height: 6px;
+    border-radius: 999px;
+    background: var(--track);
+    position: relative;
+    margin: 4px 0 10px;
+    overflow: hidden;
+  }
+  .progress .fill {
+    position: absolute;
+    inset: 0;
+    width: var(--p, 65%);
+    border-radius: 999px;
+    background: linear-gradient(90deg,
+      var(--card-accent, var(--accent)),
+      color-mix(in srgb, var(--card-accent, var(--accent)) 65%, transparent));
+    box-shadow:
+      inset 0 0.5px 0 rgba(255,255,255,0.40),
+      0 0 8px color-mix(in srgb, var(--card-accent, var(--accent)) 35%, transparent);
+  }
+  .progress .fill::after {
+    content: "";
+    position: absolute;
+    right: -1px; top: 50%;
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: var(--card-accent, var(--accent));
+    transform: translateY(-50%);
+    box-shadow: 0 0 6px var(--card-accent, var(--accent));
+  }
+
+  .stats {
+    display: flex;
+    gap: 16px;
+    font-size: 11px;
+    align-items: baseline;
+  }
+  .stats .item { display: inline-flex; gap: 4px; align-items: baseline; }
+  .stats .label { color: var(--text-secondary); }
+  .stats .value {
+    font-weight: 600;
+    font-feature-settings: "tnum";
+    font-variant-numeric: tabular-nums;
+  }
+  .stats .item.used .value { color: var(--card-accent, var(--accent)); }
+  .stats .grow { flex: 1; }
+
+  /* ---------- Chart card ---------- */
+  .chart-card {
+    border-radius: 14px;
+    background: var(--card-base);
+    backdrop-filter: blur(30px) saturate(180%);
+    border: 0.5px solid var(--edge-outer);
+    box-shadow: inset 0 0.5px 0 var(--edge-inner);
+    margin-bottom: 12px;
+    overflow: hidden;
+    transition: background 0.25s;
+  }
+  .chart-row {
+    padding: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .chart-row .ic {
+    width: 18px;
+    color: var(--accent);
+    text-align: center;
+    font-size: 14px;
+  }
+  .chart-row .name {
+    font-size: 13px;
+    font-weight: 600;
+    flex: 1;
+    letter-spacing: -0.01em;
+  }
+  .chart-row .meta-text {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    font-feature-settings: "tnum";
+  }
+  .chart-row .chev {
+    color: var(--text-tertiary);
+    font-size: 13px;
+    margin-left: 6px;
+    transition: transform 0.3s cubic-bezier(0.32, 0.72, 0.35, 1);
+    display: inline-block;
+  }
+  .chart-card.expanded .chev { transform: rotate(90deg); }
+
+  .chart-body {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.4s cubic-bezier(0.32, 0.72, 0.35, 1);
+  }
+  .chart-card.expanded .chart-body { max-height: 320px; }
+  .chart-body-inner {
+    padding: 0 12px 12px;
+  }
+
+  /* divider above chart body */
+  .chart-divider {
+    height: 0.5px;
+    margin: 0 12px 12px;
+    background: linear-gradient(90deg, transparent, var(--hairline) 15%, var(--hairline) 85%, transparent);
+  }
+
+  /* legend */
+  .chart-legend {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 10px;
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+  .chart-legend .lg-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .chart-legend .swatch {
+    width: 14px;
+    height: 4px;
+    border-radius: 2px;
+    box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.30);
+  }
+  .chart-legend .lg-five .swatch {
+    background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 60%, transparent));
+  }
+  .chart-legend .lg-week .swatch {
+    background: linear-gradient(90deg, var(--accent-normal), color-mix(in srgb, var(--accent-normal) 60%, transparent));
+    opacity: 0.85;
+  }
+  .chart-legend .lg-now {
+    margin-left: auto;
+    font-feature-settings: "tnum";
+    color: var(--text-tertiary);
+  }
+  .chart-legend .lg-now strong {
+    color: var(--accent);
+    font-weight: 600;
+    margin-right: 2px;
+  }
+
+  /* chart canvas */
+  .chart-canvas {
+    position: relative;
+    height: 132px;
+    border-radius: 10px;
+    background:
+      linear-gradient(180deg, rgba(127,127,127,0.04), transparent 60%),
+      color-mix(in srgb, var(--text) 3%, transparent);
+    border: 0.5px solid var(--hairline);
+    overflow: hidden;
+  }
+  [data-theme="dark"] .chart-canvas {
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.03), transparent 60%),
+      rgba(255,255,255,0.02);
+  }
+
+  .chart-canvas svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .chart-canvas .grid line {
+    stroke: var(--hairline);
+    stroke-width: 0.5;
+    stroke-dasharray: 2 3;
+  }
+  .chart-canvas .axis-label {
+    font-size: 9px;
+    fill: var(--text-tertiary);
+    font-family: -apple-system, system-ui;
+    font-feature-settings: "tnum";
+  }
+
+  /* threshold line for 20% low watermark */
+  .chart-canvas .threshold {
+    stroke: var(--accent-low);
+    stroke-width: 0.6;
+    stroke-dasharray: 3 3;
+    opacity: 0.55;
+  }
+  .chart-canvas .threshold-label {
+    font-size: 9px;
+    fill: var(--accent-low);
+    opacity: 0.85;
+    font-feature-settings: "tnum";
+  }
+
+  /* line + area common */
+  .chart-canvas .area-five {
+    fill: url(#gradFive);
+    opacity: 0.85;
+  }
+  .chart-canvas .line-five {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 1.6;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+    filter: drop-shadow(0 0 4px color-mix(in srgb, var(--accent) 45%, transparent));
+  }
+  .chart-canvas .area-week {
+    fill: url(#gradWeek);
+    opacity: 0.55;
+  }
+  .chart-canvas .line-week {
+    fill: none;
+    stroke: var(--accent-normal);
+    stroke-width: 1.4;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+    stroke-dasharray: 4 3;
+    opacity: 0.9;
+  }
+
+  /* current point dot */
+  .chart-canvas .dot-now {
+    fill: var(--accent);
+    stroke: var(--card-base);
+    stroke-width: 1.5;
+    filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 60%, transparent));
+  }
+  .chart-canvas .dot-pulse {
+    fill: var(--accent);
+    opacity: 0.30;
+    animation: pulse 1.8s ease-out infinite;
+    transform-origin: center;
+    transform-box: fill-box;
+  }
+  @keyframes pulse {
+    0%   { transform: scale(1);   opacity: 0.45; }
+    100% { transform: scale(2.6); opacity: 0; }
+  }
+
+  /* tooltip */
+  .chart-tooltip {
+    position: absolute;
+    pointer-events: none;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: var(--panel-base);
+    backdrop-filter: blur(20px) saturate(180%);
+    border: 0.5px solid var(--edge-outer);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.18), inset 0 0.5px 0 var(--edge-inner);
+    font-size: 11px;
+    color: var(--text);
+    font-feature-settings: "tnum";
+    white-space: nowrap;
+    transform: translate(-50%, -100%);
+    margin-top: -8px;
+  }
+  .chart-tooltip .tt-time {
+    font-size: 10px;
+    color: var(--text-tertiary);
+    margin-bottom: 2px;
+  }
+  .chart-tooltip .tt-value {
+    font-weight: 600;
+    color: var(--accent);
+  }
+
+  /* x-axis time labels under canvas */
+  .chart-xaxis {
+    margin-top: 6px;
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--text-tertiary);
+    font-feature-settings: "tnum";
+    padding: 0 2px;
+  }
+
+  /* ---------- Summary rows ---------- */
+  .summary {
+    margin-bottom: 12px;
+    border-radius: 14px;
+    overflow: hidden;
+    background: var(--card-base);
+    backdrop-filter: blur(20px);
+    border: 0.5px solid var(--edge-outer);
+    box-shadow: inset 0 0.5px 0 var(--edge-inner);
+  }
+  .summary .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 9px 14px;
+    font-size: 12px;
+  }
+  .summary .row + .row {
+    border-top: 0.5px solid var(--hairline);
+  }
+  .summary .label { color: var(--text-secondary); }
+  .summary .value {
+    font-feature-settings: "tnum";
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- Notice ---------- */
+  .notice {
+    padding: 10px 12px;
+    border-radius: 14px;
+    margin-bottom: 12px;
+    background: color-mix(in srgb, var(--accent) 8%, var(--card-base));
+    backdrop-filter: blur(20px);
+    border: 0.5px solid color-mix(in srgb, var(--accent) 22%, transparent);
+    color: var(--accent);
+    font-size: 11px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .notice .ic {
+    width: 18px; height: 18px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    font-size: 11px;
+  }
+
+  /* ---------- Actions ---------- */
+  .actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .btn {
+    height: 32px;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    transition: transform 0.12s, box-shadow 0.12s, background 0.18s;
+    position: relative;
+    color: var(--text);
+  }
+  .btn.primary {
+    color: white;
+    background: linear-gradient(180deg,
+      color-mix(in srgb, var(--accent) 92%, white),
+      var(--accent));
+    box-shadow:
+      0 4px 12px color-mix(in srgb, var(--accent) 30%, transparent),
+      inset 0 0.5px 0 rgba(255,255,255,0.45),
+      inset 0 -0.5px 0 rgba(0,0,0,0.08);
+    border: 0.5px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  }
+  .btn.primary:active {
+    transform: scale(0.97);
+    box-shadow: 0 2px 4px color-mix(in srgb, var(--accent) 20%, transparent), inset 0 0.5px 0 rgba(255,255,255,0.20);
+  }
+  .btn.quiet {
+    background: rgba(127,127,127,0.10);
+    backdrop-filter: blur(20px);
+    border: 0.5px solid var(--hairline);
+    box-shadow: inset 0 0.5px 0 var(--edge-inner);
+  }
+  .btn.quiet:hover {
+    background: rgba(127,127,127,0.16);
+  }
+  .btn.quiet:active {
+    transform: scale(0.97);
+  }
+
+  /* ---------- Footer ---------- */
+  .footer {
+    padding-top: 10px;
+    border-top: 0.5px solid var(--hairline);
+  }
+  .footer p {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    line-height: 1.5;
+    margin-bottom: 8px;
+  }
+  .footer .quit {
+    text-align: right;
+  }
+  .footer .quit button {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 11px;
+    cursor: pointer;
+    font-family: inherit;
+    padding: 4px 8px;
+  }
+  .footer .quit button:hover {
+    color: var(--text);
+  }
+
+  /* ---------- SF-symbol-like glyphs ---------- */
+  .sf {
+    font-family: "SF Pro Text", system-ui;
+    font-feature-settings: "ss01";
+    display: inline-grid;
+    place-items: center;
+  }
+
+  /* ---------- Specs panel under canvas ---------- */
+  .specs {
+    width: 100%;
+    max-width: 980px;
+    margin: 24px auto 0;
+    padding: 24px;
+    border-radius: 18px;
+    background: var(--panel-base);
+    backdrop-filter: blur(40px);
+    border: 0.5px solid var(--edge-outer);
+    box-shadow: inset 0 0.5px 0 var(--edge-inner);
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .specs h2 { font-size: 14px; margin-bottom: 12px; }
+  .specs .grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+  .specs code {
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 12px;
+    background: rgba(127,127,127,0.10);
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+</style>
+</head>
+<body data-theme="light" data-state="low">
+
+<div class="stage">
+  <!-- ────────── Toolbar ────────── -->
+  <aside class="toolbar">
+    <h1>UI 预览控制</h1>
+
+    <div class="group">
+      <div class="group-title">主题</div>
+      <button data-theme-set="light" class="active">浅色</button>
+      <button data-theme-set="dark">深色</button>
+    </div>
+
+    <div class="group">
+      <div class="group-title">额度状态</div>
+      <button data-state-set="normal">正常 (Normal)</button>
+      <button data-state-set="low" class="active">偏低 (Low)</button>
+      <button data-state-set="critical">紧急 (Critical)</button>
+    </div>
+
+    <div class="group">
+      <div class="group-title">瓶颈窗口</div>
+      <button data-bottleneck-set="five" class="active">5 小时窗口</button>
+      <button data-bottleneck-set="weekly">周窗口</button>
+    </div>
+
+    <div class="meta">
+      <strong>OS27 / Liquid Glass v2</strong><br>
+      预览基于 macOS 26 Tahoe 设计语言的延展，仅作设计提案。所有透明、模糊、着色均按 SwiftUI 可落地参数标注。
+    </div>
+  </aside>
+
+  <!-- ────────── Canvas ────────── -->
+  <main class="canvas">
+    <div>
+      <div class="panel" id="panel">
+        <!-- Header -->
+        <div class="header">
+          <div class="rings"><div class="core"></div></div>
+          <div class="text">
+            <div class="title">Codex 额度</div>
+            <div class="status" id="status">刚刚更新 · 14:08:32</div>
+          </div>
+          <div class="pill" id="pill">偏低</div>
+        </div>
+
+        <!-- Hero -->
+        <div class="hero">
+          <div class="icon"><span class="sf" id="hero-icon">⚠</span></div>
+          <div class="body">
+            <div class="label">
+              <span>当前瓶颈</span>
+              <span class="mode">5 小时窗口</span>
+            </div>
+            <div class="summary" id="hero-summary">5h · 剩余 35%，约 2 小时后耗尽</div>
+          </div>
+        </div>
+
+        <!-- Quota Cards -->
+        <div class="cards">
+          <div class="card bottleneck" id="card-five" style="--card-accent: var(--accent);">
+            <div class="card-head">
+              <span class="name">5 小时窗口</span>
+              <span class="grow"></span>
+              <span class="badge">瓶颈</span>
+              <span class="level"><span class="sf">●</span><span id="level-five">偏低</span></span>
+            </div>
+            <div class="progress"><div class="fill" style="--p: 65%"></div></div>
+            <div class="stats">
+              <div class="item used"><span class="label">已用</span><span class="value">65%</span></div>
+              <div class="item"><span class="label">剩余</span><span class="value">35%</span></div>
+              <div class="grow"></div>
+              <div class="item"><span class="label">重置</span><span class="value">14:32</span></div>
+            </div>
+          </div>
+
+          <div class="card" id="card-weekly" style="--card-accent: var(--accent-normal);">
+            <div class="card-head">
+              <span class="name">周窗口</span>
+              <span class="grow"></span>
+              <span class="level"><span class="sf">✓</span><span>正常</span></span>
+            </div>
+            <div class="progress"><div class="fill" style="--p: 22%"></div></div>
+            <div class="stats">
+              <div class="item used"><span class="label">已用</span><span class="value">22%</span></div>
+              <div class="item"><span class="label">剩余</span><span class="value">78%</span></div>
+              <div class="grow"></div>
+              <div class="item"><span class="label">重置</span><span class="value">周一 09:00</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chart card (expandable) -->
+        <div class="chart-card expanded" id="chart-card">
+          <div class="chart-row" id="chart-toggle">
+            <span class="ic sf">📈</span>
+            <span class="name">额度消耗趋势</span>
+            <span class="meta-text">近 24 小时</span>
+            <span class="chev sf">›</span>
+          </div>
+          <div class="chart-body">
+            <div class="chart-divider"></div>
+            <div class="chart-body-inner">
+              <div class="chart-legend">
+                <span class="lg-item lg-five"><span class="swatch"></span><span>5 小时窗口</span></span>
+                <span class="lg-item lg-week"><span class="swatch"></span><span>周窗口</span></span>
+                <span class="lg-now">当前 <strong id="chart-now">35%</strong></span>
+              </div>
+
+              <div class="chart-canvas">
+                <svg viewBox="0 0 320 132" preserveAspectRatio="none" id="chart-svg">
+                  <defs>
+                    <linearGradient id="gradFive" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%"  stop-color="var(--accent)" stop-opacity="0.45"/>
+                      <stop offset="60%" stop-color="var(--accent)" stop-opacity="0.10"/>
+                      <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
+                    </linearGradient>
+                    <linearGradient id="gradWeek" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%"  stop-color="var(--accent-normal)" stop-opacity="0.22"/>
+                      <stop offset="100%" stop-color="var(--accent-normal)" stop-opacity="0"/>
+                    </linearGradient>
+                  </defs>
+
+                  <!-- horizontal grid lines: 0 / 25 / 50 / 75 / 100 -->
+                  <g class="grid">
+                    <line x1="0" y1="6"   x2="320" y2="6"/>
+                    <line x1="0" y1="37"  x2="320" y2="37"/>
+                    <line x1="0" y1="68"  x2="320" y2="68"/>
+                    <line x1="0" y1="99"  x2="320" y2="99"/>
+                    <line x1="0" y1="126" x2="320" y2="126"/>
+                  </g>
+                  <!-- y-axis labels -->
+                  <text class="axis-label" x="4" y="10">100%</text>
+                  <text class="axis-label" x="4" y="72">50%</text>
+                  <text class="axis-label" x="4" y="124">0%</text>
+
+                  <!-- 20% low threshold -->
+                  <line class="threshold" x1="0" y1="111" x2="320" y2="111"/>
+                  <text class="threshold-label" x="296" y="108">20%</text>
+
+                  <!-- weekly line (dashed, mostly flat near top) -->
+                  <path class="area-week"
+                        d="M0,42 L26,40 L52,38 L78,39 L104,37 L130,36 L156,35 L182,34 L208,33 L234,32 L260,31 L286,30 L312,29 L320,29 L320,132 L0,132 Z"/>
+                  <path class="line-week"
+                        d="M0,42 L26,40 L52,38 L78,39 L104,37 L130,36 L156,35 L182,34 L208,33 L234,32 L260,31 L286,30 L312,29 L320,29"/>
+
+                  <!-- 5h line (smooth, descending) -->
+                  <path class="area-five" id="area-five"
+                        d="M0,18 L26,22 L52,28 L78,32 L104,38 L130,46 L156,55 L182,62 L208,70 L234,76 L260,80 L286,82 L312,84 L320,84 L320,132 L0,132 Z"/>
+                  <path class="line-five" id="line-five"
+                        d="M0,18 L26,22 L52,28 L78,32 L104,38 L130,46 L156,55 L182,62 L208,70 L234,76 L260,80 L286,82 L312,84"/>
+
+                  <!-- now point -->
+                  <g id="now-group" transform="translate(312, 84)">
+                    <circle class="dot-pulse" r="4"/>
+                    <circle class="dot-now"  r="3.2"/>
+                  </g>
+                </svg>
+
+                <div class="chart-tooltip" id="chart-tooltip" style="left: 312px; top: 84px;">
+                  <div class="tt-time">14:00</div>
+                  <div class="tt-value" id="tt-value">5h 剩余 35%</div>
+                </div>
+              </div>
+
+              <div class="chart-xaxis">
+                <span>昨 14:00</span>
+                <span>20:00</span>
+                <span>02:00</span>
+                <span>08:00</span>
+                <span>今 14:00</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Summary -->
+        <div class="summary">
+          <div class="row"><span class="label">下次刷新</span><span class="value">14:13:32</span></div>
+          <div class="row"><span class="label">数据来源</span><span class="value">~/.codex/auth.json</span></div>
+        </div>
+
+        <!-- Notice -->
+        <div class="notice" id="notice">
+          <span class="ic sf">!</span>
+          <span id="notice-text">额度偏低，建议留意后续任务。</span>
+        </div>
+
+        <!-- Actions -->
+        <div class="actions">
+          <button class="btn primary"><span class="sf">↻</span><span>刷新</span></button>
+          <button class="btn quiet"><span class="sf">⊞</span><span>Codex</span></button>
+          <button class="btn quiet"><span class="sf">⚙</span><span>设置</span></button>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+          <p>从 ~/.codex/auth.json 调用 ChatGPT usage 接口。计划：Plus，5h 剩余 35%，周额度剩余 78%。</p>
+          <div class="quit"><button>退出 ⌘Q</button></div>
+        </div>
+      </div>
+
+      <div class="specs">
+        <h2>设计 Token 落地参考</h2>
+        <div class="grid">
+          <div>
+            <strong>圆角 (continuous)</strong><br>
+            外壳 <code>18pt</code> · 卡片 <code>14pt</code> · 按钮 <code>10pt</code> · 胶囊 <code>999pt</code>
+          </div>
+          <div>
+            <strong>材质 (SwiftUI Material)</strong><br>
+            外壳 <code>.regularMaterial</code> · 卡片 <code>.thinMaterial</code> · Hero <code>.ultraThinMaterial</code>
+          </div>
+          <div>
+            <strong>双层描边</strong><br>
+            内描边 <code>white@12%</code> 0.5pt 顶部高光 · 外描边 <code>black@8%</code> 0.5pt 环境暗边
+          </div>
+          <div>
+            <strong>双层阴影</strong><br>
+            接触阴影 <code>black@4% r=1 y=1</code> · 环境阴影 <code>black@8% r=12 y=4</code>
+          </div>
+          <div>
+            <strong>动画</strong><br>
+            交互 <code>.spring(response: 0.35, damping: 0.78)</code> · 展开 <code>response: 0.45, damping: 0.82</code>
+          </div>
+          <div>
+            <strong>字体</strong><br>
+            数字统一 <code>.monospacedDigit().rounded()</code> · 状态徽章 <code>.subheadline.weight(.semibold)</code>
+          </div>
+          <div>
+            <strong>主按钮 (Prominent Glass)</strong><br>
+            背景渐变 <code>accent → mix(white 8%)</code> · 顶高光带 <code>white@45% inset 0.5pt</code> · 投影 <code>accent@30% r=12 y=4</code>
+          </div>
+          <div>
+            <strong>瓶颈侧条</strong><br>
+            3pt 渐变胶囊 <code>accent → accent@55%</code> · 6pt 模糊光晕 <code>accent@35%</code>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+  const root = document.body;
+
+  function setActive(selector, attr, value) {
+    document.querySelectorAll(selector).forEach(b => {
+      b.classList.toggle('active', b.getAttribute(attr) === value);
+    });
+  }
+
+  // Theme
+  document.querySelectorAll('[data-theme-set]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const v = btn.getAttribute('data-theme-set');
+      root.setAttribute('data-theme', v);
+      setActive('[data-theme-set]', 'data-theme-set', v);
+    });
+  });
+
+  // State
+  const stateData = {
+    normal: {
+      pill: '正常', heroIcon: '◐',
+      heroSummary: '所有窗口运行正常',
+      level5: '正常', notice: false,
+      cardFiveAccent: 'var(--accent-normal)',
+      cardWeeklyAccent: 'var(--accent-normal)',
+    },
+    low: {
+      pill: '偏低', heroIcon: '⚠',
+      heroSummary: '5h · 剩余 35%，约 2 小时后耗尽',
+      level5: '偏低', notice: '额度偏低，建议留意后续任务。',
+      cardFiveAccent: 'var(--accent-low)',
+      cardWeeklyAccent: 'var(--accent-normal)',
+    },
+    critical: {
+      pill: '紧急', heroIcon: '✕',
+      heroSummary: '5h · 剩余 8%，约 24 分钟后耗尽',
+      level5: '紧急', notice: '额度可能已接近耗尽。',
+      cardFiveAccent: 'var(--accent-critical)',
+      cardWeeklyAccent: 'var(--accent-normal)',
+    },
+  };
+
+  function applyState(s) {
+    const d = stateData[s];
+    root.setAttribute('data-state', s);
+    document.getElementById('pill').textContent = d.pill;
+    document.getElementById('hero-icon').textContent = d.heroIcon;
+    document.getElementById('hero-summary').textContent = d.heroSummary;
+    document.getElementById('level-five').textContent = d.level5;
+    document.getElementById('card-five').style.setProperty('--card-accent', d.cardFiveAccent);
+    document.getElementById('card-weekly').style.setProperty('--card-accent', d.cardWeeklyAccent);
+    const notice = document.getElementById('notice');
+    if (d.notice) {
+      notice.style.display = 'flex';
+      document.getElementById('notice-text').textContent = d.notice;
+    } else {
+      notice.style.display = 'none';
+    }
+    setActive('[data-state-set]', 'data-state-set', s);
+  }
+
+  document.querySelectorAll('[data-state-set]').forEach(btn => {
+    btn.addEventListener('click', () => applyState(btn.getAttribute('data-state-set')));
+  });
+
+  // Bottleneck switch
+  document.querySelectorAll('[data-bottleneck-set]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const v = btn.getAttribute('data-bottleneck-set');
+      const five = document.getElementById('card-five');
+      const weekly = document.getElementById('card-weekly');
+      five.classList.toggle('bottleneck', v === 'five');
+      weekly.classList.toggle('bottleneck', v === 'weekly');
+      five.querySelector('.badge')?.style.setProperty('display', v === 'five' ? '' : 'none');
+      // Toggle the two badges by re-creating logic
+      const fiveBadge = five.querySelector('.badge');
+      let weeklyBadge = weekly.querySelector('.badge');
+      if (v === 'weekly' && !weeklyBadge) {
+        const span = document.createElement('span');
+        span.className = 'badge';
+        span.textContent = '瓶颈';
+        weekly.querySelector('.grow').after(span);
+      } else if (v === 'five' && weeklyBadge) {
+        weeklyBadge.remove();
+      }
+      if (v === 'five') {
+        if (fiveBadge) fiveBadge.style.display = '';
+      } else {
+        if (fiveBadge) fiveBadge.style.display = 'none';
+      }
+      setActive('[data-bottleneck-set]', 'data-bottleneck-set', v);
+    });
+  });
+
+  // Init
+  applyState('low');
+</script>
+
+</body>
+</html>

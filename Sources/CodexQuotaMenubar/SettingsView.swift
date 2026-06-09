@@ -17,11 +17,17 @@ struct SettingsView: View {
                     }
                 }
 
+                Toggle(store.t("智能自适应频率", "Adaptive Frequency"), isOn: $store.adaptiveFrequency)
+                    .onChange(of: store.adaptiveFrequency) { _ in
+                        store.updateTimer()
+                    }
+
                 Picker(store.t("刷新间隔", "Refresh Interval"), selection: $store.refreshIntervalMinutes) {
                     Text(store.t("5 分钟", "5 Minutes")).tag(5)
                     Text(store.t("10 分钟", "10 Minutes")).tag(10)
                     Text(store.t("30 分钟", "30 Minutes")).tag(30)
                 }
+                .disabled(store.adaptiveFrequency)
                 .onChange(of: store.refreshIntervalMinutes) {
                     store.updateTimer()
                 }

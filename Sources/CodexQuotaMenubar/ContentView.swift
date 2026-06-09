@@ -10,6 +10,7 @@ struct ContentView: View {
             header
             bottleneckHero
             quotaSections
+            chartSection
             summaryRows
             notice
             actions
@@ -20,20 +21,22 @@ struct ContentView: View {
     }
 
     private var header: some View {
-        HStack {
+        HStack(spacing: 10) {
             QuotaRingsIcon(
                 snapshot: store.snapshot,
                 lowThreshold: store.lowThreshold,
                 isRefreshing: store.isRefreshing
             )
-            .frame(width: 30, height: 30)
+            .frame(width: 32, height: 32)
+            .shadow(color: store.menuColor.opacity(0.18), radius: 4, x: 0, y: 2)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(store.t("Codex 额度", "Codex Quota"))
                     .font(.headline)
                 Text(localizedStatusMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .monospacedDigit()
             }
 
             Spacer()
@@ -41,6 +44,9 @@ struct ContentView: View {
             Text(store.level.localizedName(lang: store.language))
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(store.menuColor)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(store.menuColor.opacity(0.08), in: Capsule())
         }
     }
 
@@ -71,6 +77,7 @@ struct ContentView: View {
         HStack(alignment: .center, spacing: 8) {
             Image(systemName: store.level == .normal ? "gauge.with.dots.needle.67percent" : "exclamationmark.triangle.fill")
                 .foregroundStyle(store.menuColor)
+                .font(.system(size: 14, weight: .semibold))
                 .frame(width: 18)
 
             VStack(alignment: .leading, spacing: 2) {
@@ -92,17 +99,68 @@ struct ContentView: View {
             Spacer(minLength: 0)
         }
         .padding(10)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .background(
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(.thinMaterial)
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(store.menuColor.opacity(0.03))
+            }
+        )
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(store.menuColor.opacity(0.22), lineWidth: 1)
+                .stroke(store.menuColor.opacity(0.18), lineWidth: 1)
         )
         .help(store.bottleneckExplanation)
     }
 
+    @State private var isChartExpanded = false
+
+    private var chartSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isChartExpanded.toggle()
+                }
+            } label: {
+                HStack {
+                    Image(systemName: "chart.xyaxis.line")
+                        .foregroundStyle(store.level.color)
+                    Text(store.t("额度消耗趋势", "Quota Trend"))
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .rotationEffect(.degrees(isChartExpanded ? 90 : 0))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(10)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            
+            if isChartExpanded {
+                QuotaChartView()
+                    .padding([.horizontal, .bottom], 10)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .background(
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(.thinMaterial)
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(store.level.color.opacity(0.02))
+            }
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(store.level.color.opacity(0.12), lineWidth: 1)
+        )
+    }
+
     private var summaryRows: some View {
         VStack(spacing: 8) {
-            InfoRow(label: store.t("最后刷新", "Last Refresh"), value: store.lastRefreshText)
+            InfoRow(label: store.t("下次刷新", "Next Refresh"), value: store.nextRefreshText)
             InfoRow(label: store.t("数据来源", "Data Source"), value: store.snapshot.source.localizedName(lang: store.language))
         }
     }
@@ -115,10 +173,17 @@ struct ContentView: View {
                 .foregroundStyle(noticeColor)
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+                .background(
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(.thinMaterial)
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(noticeColor.opacity(0.03))
+                    }
+                )
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(noticeColor.opacity(0.24), lineWidth: 1)
+                        .stroke(noticeColor.opacity(0.20), lineWidth: 1)
                 )
         }
     }
@@ -133,26 +198,20 @@ struct ContentView: View {
                         ProgressView()
                             .controlSize(.small)
                             .tint(store.level.color)
-                            .frame(width: 13, height: 13)
+                            .frame(width: 12, height: 12)
                         Text(store.t("刷新中", "Refreshing"))
                     }
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
                     .frame(maxWidth: .infinity)
                 } else {
                     HStack(spacing: 4) {
                         Image(systemName: "arrow.clockwise")
-                            .foregroundStyle(store.level.color)
                         Text(store.t("刷新", "Refresh"))
                     }
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
                     .frame(maxWidth: .infinity)
                 }
             }
-            .controlSize(.regular)
+            .buttonStyle(ModernActionButtonStyle(isPrimary: true, accentColor: store.level.color))
             .disabled(store.isRefreshing)
-            .frame(maxWidth: .infinity)
 
             Button {
                 store.openCodex()
@@ -161,13 +220,10 @@ struct ContentView: View {
                     Image(systemName: "app.badge")
                     Text("Codex")
                 }
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
                 .frame(maxWidth: .infinity)
             }
-            .controlSize(.regular)
+            .buttonStyle(ModernActionButtonStyle())
             .accessibilityLabel(store.t("打开 Codex", "Open Codex"))
-            .frame(maxWidth: .infinity)
 
             Button {
                 openSettings()
@@ -177,12 +233,9 @@ struct ContentView: View {
                     Image(systemName: "gearshape")
                     Text(store.t("设置", "Settings"))
                 }
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
                 .frame(maxWidth: .infinity)
             }
-            .controlSize(.regular)
-            .frame(maxWidth: .infinity)
+            .buttonStyle(ModernActionButtonStyle())
         }
     }
 
@@ -312,8 +365,19 @@ private struct QuotaWindowView: View {
                     .foregroundStyle(level.color)
             }
 
-            ProgressView(value: progress)
-                .tint(level.color)
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.primary.opacity(0.06))
+                        .frame(height: 5)
+                    Capsule()
+                        .fill(level.color)
+                        .frame(width: max(0, min(geometry.size.width, geometry.size.width * progress)), height: 5)
+                        .shadow(color: level.color.opacity(0.15), radius: 2, x: 0, y: 1)
+                }
+            }
+            .frame(height: 5)
+            .padding(.vertical, 2)
 
             HStack(alignment: .firstTextBaseline) {
                 LabelValue(label: store.t("已用", "Used"), value: usedText, valueColor: level.color)
@@ -324,7 +388,16 @@ private struct QuotaWindowView: View {
         }
         .padding(10)
         .padding(.leading, isBottleneck ? 4 : 0)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .background(
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(.thinMaterial)
+                if isBottleneck {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(level.color.opacity(0.03))
+                }
+            }
+        )
         .overlay(alignment: .leading) {
             Rectangle()
                 .fill(level.color)
@@ -334,7 +407,7 @@ private struct QuotaWindowView: View {
         }
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(level.color.opacity(isBottleneck ? 0.32 : 0.12), lineWidth: 1)
+                .stroke(level.color.opacity(isBottleneck ? 0.28 : 0.12), lineWidth: 1)
         )
     }
 
@@ -379,3 +452,35 @@ private struct LabelValue: View {
         .minimumScaleFactor(0.85)
     }
 }
+
+struct ModernActionButtonStyle: ButtonStyle {
+    var isPrimary: Bool = false
+    var accentColor: Color = .blue
+    @State private var isHovered = false
+    
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(isPrimary ? .white : .primary)
+            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(
+                        isPrimary
+                        ? accentColor.opacity(configuration.isPressed ? 0.82 : (isHovered ? 0.92 : 1.0))
+                        : Color.primary.opacity(configuration.isPressed ? 0.12 : (isHovered ? 0.08 : 0.04))
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(isPrimary ? Color.clear : Color.primary.opacity(0.06), lineWidth: 1)
+            )
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+            .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isHovered)
+            .onHover { hover in
+                isHovered = hover
+            }
+    }
+}
+

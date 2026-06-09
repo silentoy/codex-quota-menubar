@@ -7,6 +7,9 @@ final class QuotaStore: ObservableObject {
     @AppStorage("refreshIntervalMinutes") var refreshIntervalMinutes = 10 {
         willSet { objectWillChange.send() }
     }
+    @AppStorage("adaptiveFrequency") var adaptiveFrequency = false {
+        willSet { objectWillChange.send() }
+    }
     @AppStorage("displayMode") var displayModeRaw = DisplayMode.ring.rawValue {
         willSet { objectWillChange.send() }
     }
@@ -189,8 +192,20 @@ final class QuotaStore: ObservableObject {
         return formatter
     }
 
-    var lastRefreshText: String {
-        relativeFormatter.localizedString(for: snapshot.capturedAt, relativeTo: Date())
+    var nextRefreshText: String {
+        guard snapshot.percentRemaining != nil else {
+            return t("等待刷新", "Waiting to refresh")
+        }
+        let nextDate = snapshot.capturedAt.addingTimeInterval(TimeInterval(currentRefreshIntervalMinutes * 60))
+        let diff = nextDate.timeIntervalSinceNow
+        if diff <= 0 {
+            return t("即将刷新", "Refreshing soon")
+        }
+        let minutes = Int(ceil(diff / 60.0))
+        if minutes <= 0 {
+            return t("即将刷新", "Refreshing soon")
+        }
+        return t("\(minutes)分钟后", "In \(minutes) min\(minutes > 1 ? "s" : "")")
     }
 
     var resetText: String {
@@ -300,6 +315,9 @@ final class QuotaStore: ObservableObject {
         }
 
         isRefreshing = false
+        if !result.failed, adaptiveFrequency {
+            updateTimer()
+        }
     }
 
     func saveTelegramBotToken(_ token: String) {
@@ -420,6 +438,14 @@ final class QuotaStore: ObservableObject {
     private func makeProvider() -> QuotaProviding {
         // 固定使用 Codex 登录态 provider
         CodexAuthUsageProvider()
+    }
+
+    var historyData: [QuotaHistoryRecord] {
+        historyRecords
+    }
+
+    var usageBuckets: [QuotaUsageHourBucket] {
+        usageHourBuckets
     }
 
     private var historyRecords: [QuotaHistoryRecord] {
@@ -650,9 +676,47 @@ final class QuotaStore: ObservableObject {
         barkNotifiedResetIDsRaw = ids.suffix(50).joined(separator: "\n")
     }
 
+    var currentRefreshIntervalMinutes: Int {
+        if adaptiveFrequency {
+            return calculateAdaptiveInterval()
+        } else {
+            return refreshIntervalMinutes
+        }
+    }
+
+    private func calculateAdaptiveInterval() -> Int {
+        // 规则 1：当额度完全耗尽 (bottleneck <= 0) 且未到重置时间时，锁定为 20 分钟以省流
+        if let bottleneckPercent = snapshot.percentRemaining, bottleneckPercent <= 0 {
+            if let resetAt = snapshot.resetAt, Date() < resetAt {
+                return 20
+            }
+        }
+        
+        // 分别获取 5 小时额度和周额度的剩余百分比（nil 时默认 100）
+        let fiveHourPercent = snapshot.fiveHour.percentRemaining ?? 100
+        let weeklyPercent = snapshot.weekly.percentRemaining ?? 100
+        
+        let maxBurnRate = max(
+            QuotaBottleneckEvaluator.calculateBurnRate(windowKind: .fiveHour, snapshot: snapshot, historyRecords: historyRecords, duration: 3600),
+            QuotaBottleneckEvaluator.calculateBurnRate(windowKind: .weekly, snapshot: snapshot, historyRecords: historyRecords, duration: 3600)
+        )
+        
+        // 规则 2：极度高危期（5 小时额度 <= 5%）-> 3 分钟
+        if fiveHourPercent <= 5 { return 3 }
+        
+        // 规则 3：高危活跃期（5 小时额度 <= 20%，或最近一小时有明显的消耗流速 > 5.0%/hour）-> 5 分钟
+        if fiveHourPercent <= 20 || maxBurnRate > 5.0 { return 5 }
+        
+        // 规则 4：正常监控期（5 小时额度 <= 50%，或周额度已低于 20% 警戒线）-> 10 分钟
+        if fiveHourPercent <= 50 || weeklyPercent <= 20 { return 10 }
+        
+        // 规则 5：充足闲置期（5 小时 > 50%，且周额度 > 20% 且无消耗）-> 20 分钟
+        return 20
+    }
+
     private func startTimer() {
         timer?.invalidate()
-        let interval = TimeInterval(max(1, refreshIntervalMinutes) * 60)
+        let interval = TimeInterval(max(1, currentRefreshIntervalMinutes) * 60)
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 await self?.refresh(force: false)
@@ -679,4 +743,10 @@ final class QuotaStore: ObservableObject {
         formatter.unitsStyle = .full
         return formatter
     }()
+
+    #if DEBUG
+    func setSnapshotForTesting(_ snapshot: QuotaSnapshot) {
+        self.snapshot = snapshot
+    }
+    #endif
 }
