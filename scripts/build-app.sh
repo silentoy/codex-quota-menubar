@@ -22,12 +22,13 @@ RESOURCES_DIR="$CONTENTS_DIR/Resources"
 
 cd "$ROOT_DIR"
 
-swift build -c release
+swift build -c release -Xswiftc -Osize
 
 rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 
 cp "$BUILD_DIR/CodexQuotaMenubar" "$MACOS_DIR/CodexQuotaMenubar"
+/usr/bin/strip -x "$MACOS_DIR/CodexQuotaMenubar"
 swift scripts/generate-app-icon.swift "$RESOURCES_DIR/AppIcon.icns"
 
 cat > "$CONTENTS_DIR/Info.plist" <<EOF

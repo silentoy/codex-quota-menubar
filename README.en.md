@@ -4,13 +4,21 @@ A native macOS menubar widget to display Codex quota status.
 
 ![Codex Quota Menubar Promo](docs/assets/promo.png)
 
+## v1.5.0 Highlights
+
+- **New Glass Panel**: The main popover now uses an OS27 glass style with consistent cards, buttons, status badges, and progress bars.
+- **Enhanced Trend Charts**: The quota trend section now supports `24h Remainder / 7d Consumption / 30d Consumption` views for short-term remaining quota and longer-term consumption.
+- **Clearer Bottleneck Signal**: The current bottleneck, quota cards, status icons, and progress endpoints now share the same state color so the tightest quota window is easier to scan.
+- **Chart Fix**: Fixed the square shadow artifact in the 24h remainder chart when remaining quota is high.
+
 ## Features
 
 - **Flexible Menubar Display**: Supports "Ring (double ring)" and "Percentage (text-only, e.g., `Codex 80%`)" modes, which can be toggled in settings.
   - In ring mode, the outer ring represents the 5-hour quota and the inner ring represents the weekly quota, with highlights indicating the remaining ratio.
-- **Intuitive Data Panel**: Click the menubar icon to display a popover panel showing the used and remaining percentages, current status, and reset times for both 5-hour and weekly quotas separately.
+- **Intuitive Data Panel**: Click the menubar icon to display a popover panel showing the used and remaining percentages, current status, and reset times for both 5-hour and weekly quotas, with glass cards, hairline strokes, and state colors highlighting the important parts.
 - **Bottleneck Highlighting**: Automatically identifies the current bottleneck quota (supporting multiple bottlenecks) and allows switching assessment modes in settings.
 - **Explainable Bottleneck Assessment**: Supports "By Remaining %" and "By Usage Trend" modes. Hovering over the "Current Bottleneck" card or the "Bottleneck" tag shows the reasoning behind the assessment.
+- **Quota Trend Charts**: Supports a 24h remaining line chart, 7d consumption bars, and 30d consumption bars, showing both 5-hour and weekly quotas.
 - **Smart Refresh Mechanism**: Supports manual refresh, scheduled auto-refresh, and automatic refresh upon wake-from-sleep.
 - **Low Quota Alert Levels**: Segmented low quota notifications customisable at 10%, 20%, 30%, 40%, and 50%.
 - **Telegram Push Notifications**: Supports Telegram notification alerts for 5-hour and weekly quota resets, test messages, Keychain bot token storage, and distinguishes between scheduled reset, suspected provider adjustment, and unknown recovery.

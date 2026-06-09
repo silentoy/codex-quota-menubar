@@ -1038,7 +1038,7 @@
     });
   });
 
-  // State
+  // State (chartRemaining: 当前 5h 窗口剩余百分比，用于驱动图表末端落点 y 值)
   const stateData = {
     normal: {
       pill: '正常', heroIcon: '◐',
@@ -1046,6 +1046,7 @@
       level5: '正常', notice: false,
       cardFiveAccent: 'var(--accent-normal)',
       cardWeeklyAccent: 'var(--accent-normal)',
+      chartRemaining: 72, ttText: '5h 剩余 72%',
     },
     low: {
       pill: '偏低', heroIcon: '⚠',
@@ -1053,6 +1054,7 @@
       level5: '偏低', notice: '额度偏低，建议留意后续任务。',
       cardFiveAccent: 'var(--accent-low)',
       cardWeeklyAccent: 'var(--accent-normal)',
+      chartRemaining: 35, ttText: '5h 剩余 35%',
     },
     critical: {
       pill: '紧急', heroIcon: '✕',
@@ -1060,8 +1062,35 @@
       level5: '紧急', notice: '额度可能已接近耗尽。',
       cardFiveAccent: 'var(--accent-critical)',
       cardWeeklyAccent: 'var(--accent-normal)',
+      chartRemaining: 8, ttText: '5h 剩余 8%',
     },
   };
+
+  // Map remaining% (0-100) to chart y (0=top=100%, 132=bottom=0%, with padding 6/126)
+  function pctToY(pct) {
+    const top = 6, bottom = 126;
+    return bottom - (pct / 100) * (bottom - top);
+  }
+
+  // Build a smooth descending 5h-window curve ending at the current remaining%
+  function buildFivePath(endPct) {
+    // 14 anchor points across 24h, descending from ~100% to endPct
+    const xs = [0, 26, 52, 78, 104, 130, 156, 182, 208, 234, 260, 286, 312];
+    const start = 96;
+    const pts = xs.map((x, i) => {
+      const t = i / (xs.length - 1);
+      // ease-in-out interpolation between start and endPct
+      const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      const pct = start + (endPct - start) * eased;
+      // mild jitter so the line breathes
+      const jitter = (i % 2 === 0 ? 1.2 : -0.8) * (1 - Math.abs(0.5 - t) * 1.6);
+      return { x, y: pctToY(pct + jitter) };
+    });
+    const linePath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y.toFixed(1)}`).join(' ');
+    const last = pts[pts.length - 1];
+    const areaPath = `${linePath} L${last.x},132 L0,132 Z`;
+    return { linePath, areaPath, last };
+  }
 
   function applyState(s) {
     const d = stateData[s];
@@ -1079,6 +1108,19 @@
     } else {
       notice.style.display = 'none';
     }
+
+    // Sync chart paths + current point + tooltip
+    const { linePath, areaPath, last } = buildFivePath(d.chartRemaining);
+    document.getElementById('line-five').setAttribute('d', linePath);
+    document.getElementById('area-five').setAttribute('d', areaPath);
+    document.getElementById('now-group').setAttribute('transform', `translate(${last.x.toFixed(1)}, ${last.y.toFixed(1)})`);
+    document.getElementById('chart-now').textContent = `${d.chartRemaining}%`;
+    document.getElementById('tt-value').textContent = d.ttText;
+    // tooltip is positioned in svg viewBox units; container scales it via CSS percentage
+    const tooltip = document.getElementById('chart-tooltip');
+    tooltip.style.left = `${(last.x / 320) * 100}%`;
+    tooltip.style.top = `${(last.y / 132) * 100}%`;
+
     setActive('[data-state-set]', 'data-state-set', s);
   }
 
@@ -1113,6 +1155,12 @@
       }
       setActive('[data-bottleneck-set]', 'data-bottleneck-set', v);
     });
+  });
+
+  // Chart card expand/collapse
+  const chartCard = document.getElementById('chart-card');
+  document.getElementById('chart-toggle').addEventListener('click', () => {
+    chartCard.classList.toggle('expanded');
   });
 
   // Init
