@@ -108,6 +108,7 @@ final class QuotaStore: ObservableObject {
     @Published private(set) var isSendingTelegramTest = false
     @Published private(set) var isSendingBarkTest = false
     @Published private(set) var statusMessage = "等待首次刷新。"
+    @Published private(set) var resetCredits: ResetCreditsState = .loading
     @Published var telegramBotToken = "" {
         willSet { objectWillChange.send() }
     }
@@ -253,6 +254,50 @@ final class QuotaStore: ObservableObject {
         QuotaResetDateFormatter.text(for: window.resetAt, kind: window.kind, lang: language)
     }
 
+    var resetCreditsCountText: String {
+        switch resetCredits {
+        case .loading:
+            return "--"
+        case .failed:
+            return "--"
+        case .loaded(let snapshot):
+            return t("\(snapshot.availableCount) 次", "\(snapshot.availableCount)")
+        }
+    }
+
+    var resetCreditsSubtitleText: String {
+        switch resetCredits {
+        case .loading:
+            return t("正在读取", "Loading")
+        case .failed:
+            return t("读取失败", "Unavailable")
+        case .loaded(let snapshot):
+            guard snapshot.availableCount > 0 else {
+                return t("暂无可用重置", "No available resets")
+            }
+            guard let expiresAt = snapshot.earliestAvailableExpiration else {
+                return t("最近过期时间未知", "Earliest expiry unknown")
+            }
+            return t(
+                "最近 \(resetCreditDateText(expiresAt)) 过期",
+                "Earliest \(resetCreditDateText(expiresAt))"
+            )
+        }
+    }
+
+    func resetCreditDateText(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: language == .en ? "en_US" : "zh_CN")
+        formatter.calendar = .current
+        formatter.timeZone = .current
+        formatter.dateFormat = language == .en ? "MMM d HH:mm" : "M月d日 HH:mm"
+        return formatter.string(from: date)
+    }
+
+    func resetCreditRelativeExpirationText(_ date: Date) -> String {
+        relativeFormatter.localizedString(for: date, relativeTo: Date())
+    }
+
     func accessibilityLabel() -> String {
         let fiveHourLevel = level(for: snapshot.fiveHour.percentRemaining).localizedName(lang: language)
         let weeklyLevel = level(for: snapshot.weekly.percentRemaining).localizedName(lang: language)
@@ -291,7 +336,8 @@ final class QuotaStore: ObservableObject {
         statusMessage = t("正在刷新...", "Refreshing...")
 
         let provider = makeProvider()
-        let result = await provider.fetch()
+        let fetchResult = await provider.fetchAll()
+        let result = fetchResult.usage
         let previousSnapshot = snapshot
 
         if result.failed, snapshot.percentRemaining != nil, !force {
@@ -313,6 +359,8 @@ final class QuotaStore: ObservableObject {
         if !result.failed {
             await sendQuotaResetNotifications(previous: previousSnapshot, current: result)
         }
+
+        applyResetCreditsResult(fetchResult.resetCredits)
 
         isRefreshing = false
         if !result.failed, adaptiveFrequency {
@@ -435,9 +483,21 @@ final class QuotaStore: ObservableObject {
         return "\(home)/Library/LaunchAgents/\(launchAgentLabel).plist"
     }
 
-    private func makeProvider() -> QuotaProviding {
+    private func makeProvider() -> CodexAuthUsageProvider {
         // 固定使用 Codex 登录态 provider
         CodexAuthUsageProvider()
+    }
+
+    private func applyResetCreditsResult(_ result: ResetCreditsState) {
+        switch result {
+        case .loaded, .loading:
+            resetCredits = result
+        case .failed:
+            if case .loaded = resetCredits {
+                return
+            }
+            resetCredits = result
+        }
     }
 
     var historyData: [QuotaHistoryRecord] {
@@ -747,6 +807,10 @@ final class QuotaStore: ObservableObject {
     #if DEBUG
     func setSnapshotForTesting(_ snapshot: QuotaSnapshot) {
         self.snapshot = snapshot
+    }
+
+    func setResetCreditsForTesting(_ resetCredits: ResetCreditsState) {
+        self.resetCredits = resetCredits
     }
     #endif
 }

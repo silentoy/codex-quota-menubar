@@ -137,6 +137,47 @@ struct QuotaWindowSnapshot: Sendable {
     }
 }
 
+enum ResetCreditsState: Sendable {
+    case loading
+    case loaded(ResetCreditsSnapshot)
+    case failed(String)
+
+    static func loaded(availableCount: Int, credits: [ResetCredit], capturedAt: Date = Date()) -> ResetCreditsState {
+        .loaded(
+            ResetCreditsSnapshot(
+                availableCount: availableCount,
+                credits: credits,
+                capturedAt: capturedAt,
+                failed: false,
+                detail: ""
+            )
+        )
+    }
+}
+
+struct ResetCreditsSnapshot: Sendable {
+    var availableCount: Int
+    var credits: [ResetCredit]
+    var capturedAt: Date
+    var failed: Bool
+    var detail: String
+
+    var availableCredits: [ResetCredit] {
+        credits.filter { $0.status == "available" }
+    }
+
+    var earliestAvailableExpiration: Date? {
+        availableCredits.compactMap(\.expiresAt).min()
+    }
+}
+
+struct ResetCredit: Sendable, Equatable {
+    var status: String
+    var title: String
+    var grantedAt: Date?
+    var expiresAt: Date?
+}
+
 struct QuotaHistoryRecord: Codable, Sendable {
     var fiveHourPercentRemaining: Int?
     var weeklyPercentRemaining: Int?

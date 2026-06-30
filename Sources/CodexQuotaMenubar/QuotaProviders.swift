@@ -7,6 +7,7 @@ protocol QuotaProviding: Sendable {
 struct CodexAuthUsageProvider: QuotaProviding, Sendable {
     private let authURL: URL
     private let usageURL = URL(string: "https://chatgpt.com/backend-api/wham/usage")!
+    private let resetCreditsURL = URL(string: "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits")!
     private let refreshURL = URL(string: "https://auth.openai.com/oauth/token")!
     private let codexClientID = "app_EMoamEEZ73f0CkXaXp7hrann"
 
@@ -15,6 +16,11 @@ struct CodexAuthUsageProvider: QuotaProviding, Sendable {
     }
 
     func fetch() async -> QuotaSnapshot {
+        let result = await fetchAll()
+        return result.usage
+    }
+
+    func fetchAll() async -> (usage: QuotaSnapshot, resetCredits: ResetCreditsState) {
         do {
             let auth = try readAuthFile()
             guard var accessToken = auth.tokens?.accessToken else {
@@ -27,7 +33,25 @@ struct CodexAuthUsageProvider: QuotaProviding, Sendable {
                 throw CodexAuthUsageError.tokenRefreshFailed
             }
 
-            let data = try await fetchUsage(accessToken: accessToken, accountID: accountID(from: auth))
+            let accountID = accountID(from: auth)
+            async let usage = fetchUsageSnapshot(accessToken: accessToken, accountID: accountID)
+            async let resetCredits = fetchResetCreditsState(accessToken: accessToken, accountID: accountID)
+            return (await usage, await resetCredits)
+        } catch {
+            return (
+                .unknown(
+                    source: .codexAuth,
+                    detail: "读取 Codex 登录态失败：\(error.localizedDescription)",
+                    failed: true
+                ),
+                .failed(error.localizedDescription)
+            )
+        }
+    }
+
+    private func fetchUsageSnapshot(accessToken: String, accountID: String?) async -> QuotaSnapshot {
+        do {
+            let data = try await fetchUsage(accessToken: accessToken, accountID: accountID)
             return try Self.snapshot(fromUsageData: data)
         } catch {
             return .unknown(
@@ -35,6 +59,31 @@ struct CodexAuthUsageProvider: QuotaProviding, Sendable {
                 detail: "读取 Codex 登录态失败：\(error.localizedDescription)",
                 failed: true
             )
+        }
+    }
+
+    func fetchResetCreditsSnapshot() async throws -> ResetCreditsSnapshot {
+        let auth = try readAuthFile()
+        guard var accessToken = auth.tokens?.accessToken else {
+            throw CodexAuthUsageError.missingAccessToken
+        }
+
+        if isTokenExpired(accessToken), let refreshToken = auth.tokens?.refreshToken {
+            accessToken = try await refreshAccessToken(refreshToken)
+        } else if isTokenExpired(accessToken) {
+            throw CodexAuthUsageError.tokenRefreshFailed
+        }
+
+        let data = try await fetchResetCredits(accessToken: accessToken, accountID: accountID(from: auth))
+        return try Self.resetCredits(fromData: data)
+    }
+
+    private func fetchResetCreditsState(accessToken: String, accountID: String?) async -> ResetCreditsState {
+        do {
+            let data = try await fetchResetCredits(accessToken: accessToken, accountID: accountID)
+            return .loaded(try Self.resetCredits(fromData: data))
+        } catch {
+            return .failed(error.localizedDescription)
         }
     }
 
@@ -60,6 +109,29 @@ struct CodexAuthUsageProvider: QuotaProviding, Sendable {
             throw CodexAuthUsageError.invalidResponse
         }
         guard 200...299 ~= http.statusCode else {
+            throw CodexAuthUsageError.httpError(http.statusCode)
+        }
+
+        return data
+    }
+
+    private func fetchResetCredits(accessToken: String, accountID: String?) async throws -> Data {
+        var request = URLRequest(url: resetCreditsURL)
+        request.httpMethod = "GET"
+        request.addValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.addValue("application/json", forHTTPHeaderField: "Accept")
+        if let accountID, !accountID.isEmpty {
+            request.addValue(accountID, forHTTPHeaderField: "ChatGPT-Account-Id")
+        }
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw CodexAuthUsageError.invalidResponse
+        }
+        guard 200...299 ~= http.statusCode else {
+            if http.statusCode == 401 {
+                throw CodexAuthUsageError.resetCreditsUnauthorized
+            }
             throw CodexAuthUsageError.httpError(http.statusCode)
         }
 
@@ -93,6 +165,54 @@ struct CodexAuthUsageProvider: QuotaProviding, Sendable {
             throw CodexAuthUsageError.decodeFailed
         }
         return snapshot(from: response, capturedAt: capturedAt)
+    }
+
+    static func resetCredits(fromData data: Data, capturedAt: Date = Date()) throws -> ResetCreditsSnapshot {
+        let response: CodexResetCreditsResponse
+        do {
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .custom { decoder in
+                let container = try decoder.singleValueContainer()
+                let raw = try container.decode(String.self)
+                if let date = Self.iso8601Date(from: raw) {
+                    return date
+                }
+                throw DecodingError.dataCorruptedError(
+                    in: container,
+                    debugDescription: "Invalid ISO-8601 date."
+                )
+            }
+            response = try decoder.decode(CodexResetCreditsResponse.self, from: data)
+        } catch {
+            throw CodexAuthUsageError.decodeFailed
+        }
+
+        return ResetCreditsSnapshot(
+            availableCount: response.availableCount,
+            credits: response.credits.map {
+                ResetCredit(
+                    status: $0.status,
+                    title: $0.title,
+                    grantedAt: $0.grantedAt,
+                    expiresAt: $0.expiresAt
+                )
+            },
+            capturedAt: capturedAt,
+            failed: false,
+            detail: ""
+        )
+    }
+
+    private static func iso8601Date(from raw: String) -> Date? {
+        let fractionalFormatter = ISO8601DateFormatter()
+        fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractionalFormatter.date(from: raw) {
+            return date
+        }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: raw)
     }
 
     private static func snapshot(from response: CodexUsageResponse, capturedAt: Date) -> QuotaSnapshot {
@@ -209,6 +329,30 @@ private struct CodexRateLimit: Codable, Sendable {
     }
 }
 
+private struct CodexResetCreditsResponse: Codable, Sendable {
+    let availableCount: Int
+    let credits: [CodexResetCreditResponse]
+
+    enum CodingKeys: String, CodingKey {
+        case availableCount = "available_count"
+        case credits
+    }
+}
+
+private struct CodexResetCreditResponse: Codable, Sendable {
+    let status: String
+    let title: String
+    let grantedAt: Date?
+    let expiresAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case title
+        case grantedAt = "granted_at"
+        case expiresAt = "expires_at"
+    }
+}
+
 private struct CodexWindow: Codable, Sendable {
     let usedPercent: Int?
     let resetAt: Int?
@@ -231,13 +375,14 @@ private struct CodexTokenRefreshResponse: Codable, Sendable {
     }
 }
 
-private enum CodexAuthUsageError: LocalizedError {
+enum CodexAuthUsageError: LocalizedError, Equatable {
     case authFileMissing(String)
     case missingAccessToken
     case decodeFailed
     case invalidResponse
     case httpError(Int)
     case tokenRefreshFailed
+    case resetCreditsUnauthorized
 
     var errorDescription: String? {
         switch self {
@@ -253,6 +398,8 @@ private enum CodexAuthUsageError: LocalizedError {
             return "ChatGPT usage 接口 HTTP \(status)。"
         case .tokenRefreshFailed:
             return "Codex access_token 已过期，刷新失败，请重新登录 Codex。"
+        case .resetCreditsUnauthorized:
+            return "重置次数接口 HTTP 401：凭证失效或未携带 Authorization header。"
         }
     }
 }

@@ -57,6 +57,43 @@ struct QuotaStoreTests {
         setQuota(store: store, fiveHour: 100, weekly: 15)
         #expect(store.currentRefreshIntervalMinutes == 10)
     }
+
+    @Test func resetCreditsSummaryUsesEarliestExpiration() {
+        let store = QuotaStore()
+        store.setResetCreditsForTesting(.loaded(
+            availableCount: 2,
+            credits: [
+                ResetCredit(
+                    status: "available",
+                    title: "Later",
+                    grantedAt: Date(timeIntervalSince1970: 1_800_000_000),
+                    expiresAt: Date(timeIntervalSince1970: 1_900_000_000)
+                ),
+                ResetCredit(
+                    status: "available",
+                    title: "Sooner",
+                    grantedAt: Date(timeIntervalSince1970: 1_700_000_000),
+                    expiresAt: Date(timeIntervalSince1970: 1_800_000_000)
+                )
+            ],
+            capturedAt: Date(timeIntervalSince1970: 1_700_000_000)
+        ))
+
+        #expect(store.resetCreditsCountText == "2 次")
+        #expect(store.resetCreditsSubtitleText.contains("最近"))
+        #expect(store.resetCreditsSubtitleText.contains("过期"))
+    }
+
+    @Test func resetCreditsSummaryHandlesEmptyAndFailureStates() {
+        let store = QuotaStore()
+        store.setResetCreditsForTesting(.loaded(availableCount: 0, credits: [], capturedAt: Date()))
+        #expect(store.resetCreditsCountText == "0 次")
+        #expect(store.resetCreditsSubtitleText == "暂无可用重置")
+
+        store.setResetCreditsForTesting(.failed("HTTP 401"))
+        #expect(store.resetCreditsCountText == "--")
+        #expect(store.resetCreditsSubtitleText == "读取失败")
+    }
     
     private func setQuota(store: QuotaStore, fiveHour: Int?, weekly: Int?, resetAt: Date? = nil) {
         let mockSnapshot = QuotaSnapshot(

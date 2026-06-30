@@ -10,6 +10,7 @@ struct ContentView: View {
             header
             bottleneckHero
             quotaSections
+            resetCreditsSection
             chartSection
             summaryRows
             notice
@@ -150,11 +151,141 @@ struct ContentView: View {
     }
 
     @State private var isChartExpanded = false
+    @State private var isResetCreditsExpanded = false
+
+    private var resetCreditsSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isResetCreditsExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(resetCreditsAccentColor.opacity(0.16))
+                        Image(systemName: "arrow.clockwise.circle.fill")
+                            .foregroundStyle(resetCreditsAccentColor)
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    .frame(width: 22, height: 22)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(store.t("重置次数", "Reset Credits"))
+                            .font(.subheadline.weight(.semibold))
+                        Text(store.resetCreditsSubtitleText)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    Text(store.resetCreditsCountText)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(resetCreditsAccentColor)
+                        .monospacedDigit()
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .rotationEffect(.degrees(isResetCreditsExpanded ? 90 : 0))
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(OS27.Padding.card)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if isResetCreditsExpanded {
+                Rectangle()
+                    .fill(LinearGradient(
+                        colors: [.clear, OS27.Stroke.hairline, OS27.Stroke.hairline, .clear],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    ))
+                    .frame(height: 0.5)
+                    .padding(.horizontal, 12)
+
+                resetCreditsExpandedBody
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .transition(.opacity)
+            }
+        }
+        .glassCard(tint: resetCreditsAccentColor, tintOpacity: 0.02)
+    }
+
+    @ViewBuilder
+    private var resetCreditsExpandedBody: some View {
+        switch store.resetCredits {
+        case .loading:
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                Text(store.t("正在读取重置次数。", "Loading reset credits."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            }
+        case .failed(let detail):
+            Text(detail.isEmpty ? store.t("重置次数读取失败。", "Failed to load reset credits.") : detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        case .loaded(let snapshot):
+            if snapshot.credits.isEmpty {
+                Text(store.t("暂无可用重置。", "No available resets."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                let credits = sortedResetCredits(snapshot)
+                VStack(spacing: 0) {
+                    ForEach(Array(credits.enumerated()), id: \.offset) { index, credit in
+                        ResetCreditRow(
+                            credit: credit,
+                            isEarliestAvailable: credit.expiresAt == snapshot.earliestAvailableExpiration
+                        )
+                        if index < credits.count - 1 {
+                            Rectangle()
+                                .fill(OS27.Stroke.hairline)
+                                .frame(height: 0.5)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var resetCreditsAccentColor: Color {
+        switch store.resetCredits {
+        case .loaded(let snapshot) where snapshot.availableCount > 0:
+            return .quotaNormal
+        case .failed:
+            return .secondary
+        case .loading:
+            return .secondary
+        default:
+            return .secondary
+        }
+    }
+
+    private func sortedResetCredits(_ snapshot: ResetCreditsSnapshot) -> [ResetCredit] {
+        snapshot.credits.sorted { lhs, rhs in
+            if lhs.status == "available", rhs.status != "available" {
+                return true
+            }
+            if lhs.status != "available", rhs.status == "available" {
+                return false
+            }
+            return (lhs.expiresAt ?? .distantFuture) < (rhs.expiresAt ?? .distantFuture)
+        }
+    }
 
     private var chartSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
-                withAnimation(OS27.Motion.expand) {
+                withAnimation(.easeInOut(duration: 0.2)) {
                     isChartExpanded.toggle()
                 }
             } label: {
@@ -187,7 +318,7 @@ struct ContentView: View {
                 QuotaChartView()
                     .padding([.horizontal, .bottom], 12)
                     .padding(.top, 10)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.opacity)
             }
         }
         .glassCard(tint: store.level.color, tintOpacity: 0.02)
@@ -530,6 +661,90 @@ private struct LabelValue: View {
         .font(.caption)
         .lineLimit(1)
         .minimumScaleFactor(0.85)
+    }
+}
+
+private struct ResetCreditRow: View {
+    @EnvironmentObject private var store: QuotaStore
+    let credit: ResetCredit
+    let isEarliestAvailable: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(credit.title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+
+                Spacer(minLength: 6)
+
+                Text(credit.status)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(statusColor)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(statusColor.opacity(0.14), in: Capsule())
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                ResetCreditTimeLine(
+                    label: store.t("获得", "Granted"),
+                    value: dateText(credit.grantedAt),
+                    valueColor: .secondary
+                )
+                ResetCreditTimeLine(
+                    label: store.t("过期", "Expires"),
+                    value: expirationText,
+                    valueColor: isEarliestAvailable ? .quotaLow : .secondary
+                )
+            }
+        }
+        .padding(.vertical, 8)
+    }
+
+    private var expirationText: String {
+        guard let expiresAt = credit.expiresAt else {
+            return store.t("未知", "Unknown")
+        }
+        let date = store.resetCreditDateText(expiresAt)
+        if isEarliestAvailable {
+            return "\(date) · \(store.resetCreditRelativeExpirationText(expiresAt))"
+        }
+        return date
+    }
+
+    private var statusColor: Color {
+        credit.status == "available" ? .quotaNormal : .secondary
+    }
+
+    private func dateText(_ date: Date?) -> String {
+        guard let date else {
+            return store.t("未知", "Unknown")
+        }
+        return store.resetCreditDateText(date)
+    }
+}
+
+private struct ResetCreditTimeLine: View {
+    let label: String
+    let value: String
+    let valueColor: Color
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(label)
+                .foregroundStyle(.tertiary)
+                .frame(width: 34, alignment: .leading)
+            Text(value)
+                .foregroundStyle(valueColor)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+            Spacer(minLength: 0)
+        }
+        .font(.caption2)
     }
 }
 
