@@ -31,6 +31,94 @@ struct CodexAuthUsageProviderTests {
         #expect(snapshot.failed == true)
     }
 
+    @Test func weeklyPrimaryWindowIsNotTreatedAsFiveHour() throws {
+        let data = Data("""
+        {
+          "plan_type": "plus",
+          "rate_limit": {
+            "primary_window": {
+              "used_percent": 2,
+              "limit_window_seconds": 604800,
+              "reset_after_seconds": 597929,
+              "reset_at": 1787204957
+            },
+            "secondary_window": null
+          }
+        }
+        """.utf8)
+
+        let snapshot = try CodexAuthUsageProvider.snapshot(fromUsageData: data, capturedAt: Date(timeIntervalSince1970: 1_786_607_028))
+
+        #expect(snapshot.fiveHour.percentRemaining == nil)
+        #expect(snapshot.fiveHour.resetAt == nil)
+        #expect(snapshot.weekly.percentRemaining == 98)
+        #expect(snapshot.weekly.resetAt == Date(timeIntervalSince1970: 1_787_204_957))
+        #expect(snapshot.failed == false)
+        #expect(snapshot.detail.contains("周额度剩余：98%"))
+    }
+
+    @Test func windowDurationsOverridePrimarySecondarySlots() throws {
+        let data = Data("""
+        {
+          "plan_type": "plus",
+          "rate_limit": {
+            "primary_window": {
+              "used_percent": 10,
+              "limit_window_seconds": 604800,
+              "reset_at": 1800604800
+            },
+            "secondary_window": {
+              "used_percent": 40,
+              "limit_window_seconds": 18000,
+              "reset_at": 1800003600
+            }
+          }
+        }
+        """.utf8)
+
+        let snapshot = try CodexAuthUsageProvider.snapshot(fromUsageData: data)
+
+        #expect(snapshot.fiveHour.percentRemaining == 60)
+        #expect(snapshot.fiveHour.resetAt == Date(timeIntervalSince1970: 1_800_003_600))
+        #expect(snapshot.weekly.percentRemaining == 90)
+        #expect(snapshot.weekly.resetAt == Date(timeIntervalSince1970: 1_800_604_800))
+    }
+
+    @Test func fractionalUsedPercentAndResetAfterSecondsAreParsed() throws {
+        let capturedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        let data = Data("""
+        {
+          "plan_type": "plus",
+          "rate_limit": {
+            "primary_window": {
+              "used_percent": 18.4,
+              "limit_window_seconds": 18000,
+              "reset_after_seconds": 3600
+            },
+            "secondary_window": {
+              "used_percent": "86.6",
+              "limit_window_seconds": 604800,
+              "reset_after_seconds": 86400
+            }
+          }
+        }
+        """.utf8)
+
+        let snapshot = try CodexAuthUsageProvider.snapshot(fromUsageData: data, capturedAt: capturedAt)
+
+        #expect(snapshot.fiveHour.percentRemaining == 82)
+        #expect(snapshot.fiveHour.resetAt == capturedAt.addingTimeInterval(3600))
+        #expect(snapshot.weekly.percentRemaining == 13)
+        #expect(snapshot.weekly.resetAt == capturedAt.addingTimeInterval(86400))
+    }
+
+    @Test func classifiesFiveHourAndWeeklyDurations() {
+        #expect(CodexUsageWindowClassifier.kind(limitWindowSeconds: 18_000) == .fiveHour)
+        #expect(CodexUsageWindowClassifier.kind(limitWindowSeconds: 604_800) == .weekly)
+        #expect(CodexUsageWindowClassifier.kind(limitWindowSeconds: 86_400) == nil)
+        #expect(CodexUsageWindowClassifier.kind(limitWindowSeconds: nil) == nil)
+    }
+
     @Test func parsesResetCreditsResponse() throws {
         let data = Data("""
         {

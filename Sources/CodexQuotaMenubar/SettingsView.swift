@@ -71,6 +71,8 @@ struct SettingsView: View {
 
                 Toggle(store.t("5 小时额度重置提醒", "5-Hour Quota Reset Alert"), isOn: $store.telegramNotifyFiveHourReset)
                 Toggle(store.t("周额度重置提醒", "Weekly Quota Reset Alert"), isOn: $store.telegramNotifyWeeklyReset)
+                Toggle(store.t("重置次数增加提醒", "Reset Credits Increased Alert"), isOn: $store.telegramNotifyResetCreditsIncreased)
+                Toggle(store.t("重置次数过期提醒", "Reset Credits Expired Alert"), isOn: $store.telegramNotifyResetCreditsExpired)
 
                 Button {
                     store.sendTelegramTestMessage()
@@ -104,6 +106,8 @@ struct SettingsView: View {
 
                 Toggle(store.t("5 小时额度重置提醒", "5-Hour Quota Reset Alert"), isOn: $store.barkNotifyFiveHourReset)
                 Toggle(store.t("周额度重置提醒", "Weekly Quota Reset Alert"), isOn: $store.barkNotifyWeeklyReset)
+                Toggle(store.t("重置次数增加提醒", "Reset Credits Increased Alert"), isOn: $store.barkNotifyResetCreditsIncreased)
+                Toggle(store.t("重置次数过期提醒", "Reset Credits Expired Alert"), isOn: $store.barkNotifyResetCreditsExpired)
 
                 Button {
                     store.sendBarkTestMessage()

@@ -93,25 +93,24 @@ struct ContentView: View {
 
     private var quotaSections: some View {
         VStack(spacing: 10) {
-            QuotaWindowView(
-                window: store.snapshot.fiveHour,
-                isBottleneck: store.bottleneckWindows.contains(.fiveHour),
-                level: store.level(for: store.snapshot.fiveHour.percentRemaining),
-                usedText: store.percentText(store.snapshot.fiveHour.percentUsed),
-                remainingText: store.percentText(store.snapshot.fiveHour.percentRemaining),
-                resetText: store.resetText(for: store.snapshot.fiveHour),
-                helpText: store.bottleneckExplanation
-            )
-            QuotaWindowView(
-                window: store.snapshot.weekly,
-                isBottleneck: store.bottleneckWindows.contains(.weekly),
-                level: store.level(for: store.snapshot.weekly.percentRemaining),
-                usedText: store.percentText(store.snapshot.weekly.percentUsed),
-                remainingText: store.percentText(store.snapshot.weekly.percentRemaining),
-                resetText: store.resetText(for: store.snapshot.weekly),
-                helpText: store.bottleneckExplanation
-            )
+            ForEach(visibleQuotaWindows, id: \.kind) { window in
+                QuotaWindowView(
+                    window: window,
+                    isBottleneck: store.bottleneckWindows.contains(window.kind),
+                    level: store.level(for: window.percentRemaining),
+                    usedText: store.percentText(window.percentUsed),
+                    remainingText: store.percentText(window.percentRemaining),
+                    resetText: store.resetText(for: window),
+                    helpText: store.bottleneckExplanation
+                )
+            }
         }
+    }
+
+    private var visibleQuotaWindows: [QuotaWindowSnapshot] {
+        let windows = [store.snapshot.fiveHour, store.snapshot.weekly]
+        let known = windows.filter(\.isKnown)
+        return known.isEmpty ? windows : known
     }
 
     private var bottleneckHero: some View {

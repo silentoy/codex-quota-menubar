@@ -216,10 +216,9 @@ struct CodexAuthUsageProvider: QuotaProviding, Sendable {
     }
 
     private static func snapshot(from response: CodexUsageResponse, capturedAt: Date) -> QuotaSnapshot {
-        let sessionUsed = response.rateLimit?.primaryWindow?.usedPercent
-        let weeklyUsed = response.rateLimit?.secondaryWindow?.usedPercent
-        let sessionRemaining = sessionUsed.map { max(0, min(100, 100 - $0)) }
-        let weeklyRemaining = weeklyUsed.map { max(0, min(100, 100 - $0)) }
+        let assigned = CodexUsageWindowClassifier.assign(rateLimit: response.rateLimit)
+        let sessionRemaining = assigned.fiveHour?.remainingPercent
+        let weeklyRemaining = assigned.weekly?.remainingPercent
 
         let plan = response.planType ?? "unknown"
         let sessionText = sessionRemaining.map { "\($0)%" } ?? "未知"
@@ -236,12 +235,12 @@ struct CodexAuthUsageProvider: QuotaProviding, Sendable {
             fiveHour: QuotaWindowSnapshot(
                 kind: .fiveHour,
                 percentRemaining: sessionRemaining,
-                resetAt: response.rateLimit?.primaryWindow?.resetDate
+                resetAt: assigned.fiveHour?.resetDate(capturedAt: capturedAt)
             ),
             weekly: QuotaWindowSnapshot(
                 kind: .weekly,
                 percentRemaining: weeklyRemaining,
-                resetAt: response.rateLimit?.secondaryWindow?.resetDate
+                resetAt: assigned.weekly?.resetDate(capturedAt: capturedAt)
             ),
             source: .codexAuth,
             detail: detail,
@@ -307,7 +306,7 @@ private struct CodexTokens: Codable, Sendable {
     }
 }
 
-private struct CodexUsageResponse: Codable, Sendable {
+private struct CodexUsageResponse: Decodable, Sendable {
     let planType: String?
     let rateLimit: CodexRateLimit?
 
@@ -317,7 +316,7 @@ private struct CodexUsageResponse: Codable, Sendable {
     }
 }
 
-private struct CodexRateLimit: Codable, Sendable {
+struct CodexRateLimit: Decodable, Sendable {
     let limitReached: Bool?
     let primaryWindow: CodexWindow?
     let secondaryWindow: CodexWindow?
@@ -326,6 +325,16 @@ private struct CodexRateLimit: Codable, Sendable {
         case limitReached = "limit_reached"
         case primaryWindow = "primary_window"
         case secondaryWindow = "secondary_window"
+    }
+
+    init(
+        limitReached: Bool? = nil,
+        primaryWindow: CodexWindow? = nil,
+        secondaryWindow: CodexWindow? = nil
+    ) {
+        self.limitReached = limitReached
+        self.primaryWindow = primaryWindow
+        self.secondaryWindow = secondaryWindow
     }
 }
 
@@ -353,17 +362,158 @@ private struct CodexResetCreditResponse: Codable, Sendable {
     }
 }
 
-private struct CodexWindow: Codable, Sendable {
+struct CodexWindow: Decodable, Sendable {
     let usedPercent: Int?
     let resetAt: Int?
+    let limitWindowSeconds: Int?
+    let resetAfterSeconds: Int?
 
     enum CodingKeys: String, CodingKey {
         case usedPercent = "used_percent"
         case resetAt = "reset_at"
+        case limitWindowSeconds = "limit_window_seconds"
+        case resetAfterSeconds = "reset_after_seconds"
     }
 
-    var resetDate: Date? {
-        resetAt.map { Date(timeIntervalSince1970: TimeInterval($0)) }
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        usedPercent = container.decodeFlexibleInt(forKey: .usedPercent)
+        resetAt = container.decodeFlexibleInt(forKey: .resetAt)
+        limitWindowSeconds = container.decodeFlexibleInt(forKey: .limitWindowSeconds)
+        resetAfterSeconds = container.decodeFlexibleInt(forKey: .resetAfterSeconds)
+    }
+
+    init(
+        usedPercent: Int?,
+        resetAt: Int? = nil,
+        limitWindowSeconds: Int? = nil,
+        resetAfterSeconds: Int? = nil
+    ) {
+        self.usedPercent = usedPercent
+        self.resetAt = resetAt
+        self.limitWindowSeconds = limitWindowSeconds
+        self.resetAfterSeconds = resetAfterSeconds
+    }
+
+    var isEmpty: Bool {
+        usedPercent == nil && resetAt == nil && limitWindowSeconds == nil && resetAfterSeconds == nil
+    }
+
+    var remainingPercent: Int? {
+        usedPercent.map { max(0, min(100, 100 - $0)) }
+    }
+
+    func resetDate(capturedAt: Date) -> Date? {
+        if let resetAt {
+            return Date(timeIntervalSince1970: TimeInterval(resetAt))
+        }
+        if let resetAfterSeconds {
+            return capturedAt.addingTimeInterval(TimeInterval(resetAfterSeconds))
+        }
+        return nil
+    }
+}
+
+enum CodexUsageWindowClassifier {
+    // ChatGPT usage no longer guarantees primary=5h / secondary=weekly.
+    // Some plans only return a weekly window in primary_window.
+    static let fiveHourSeconds = 5 * 3600
+    static let weeklySeconds = 7 * 24 * 3600
+
+    private struct Candidate {
+        let window: CodexWindow
+        let slotKind: QuotaWindowKind
+        let classifiedKind: QuotaWindowKind?
+    }
+
+    static func kind(limitWindowSeconds: Int?) -> QuotaWindowKind? {
+        guard let limitWindowSeconds, limitWindowSeconds > 0 else { return nil }
+        if limitWindowSeconds <= 12 * 3600 {
+            return .fiveHour
+        }
+        if limitWindowSeconds >= 2 * 24 * 3600 {
+            return .weekly
+        }
+        return nil
+    }
+
+    static func assign(rateLimit: CodexRateLimit?) -> (fiveHour: CodexWindow?, weekly: CodexWindow?) {
+        guard let rateLimit else { return (nil, nil) }
+
+        var candidates: [Candidate] = []
+        if let primary = rateLimit.primaryWindow, !primary.isEmpty {
+            candidates.append(
+                Candidate(
+                    window: primary,
+                    slotKind: .fiveHour,
+                    classifiedKind: kind(limitWindowSeconds: primary.limitWindowSeconds)
+                )
+            )
+        }
+        if let secondary = rateLimit.secondaryWindow, !secondary.isEmpty {
+            candidates.append(
+                Candidate(
+                    window: secondary,
+                    slotKind: .weekly,
+                    classifiedKind: kind(limitWindowSeconds: secondary.limitWindowSeconds)
+                )
+            )
+        }
+
+        var fiveHour: CodexWindow?
+        var weekly: CodexWindow?
+
+        fiveHour = closestWindow(in: candidates, kind: .fiveHour, targetSeconds: fiveHourSeconds)
+        weekly = closestWindow(in: candidates, kind: .weekly, targetSeconds: weeklySeconds)
+
+        for candidate in candidates {
+            guard candidate.classifiedKind == nil else { continue }
+            switch candidate.slotKind {
+            case .fiveHour where fiveHour == nil:
+                fiveHour = candidate.window
+            case .weekly where weekly == nil:
+                weekly = candidate.window
+            case .fiveHour, .weekly:
+                if fiveHour == nil {
+                    fiveHour = candidate.window
+                } else if weekly == nil {
+                    weekly = candidate.window
+                }
+            }
+        }
+
+        return (fiveHour, weekly)
+    }
+
+    private static func closestWindow(
+        in candidates: [Candidate],
+        kind: QuotaWindowKind,
+        targetSeconds: Int
+    ) -> CodexWindow? {
+        candidates
+            .filter { $0.classifiedKind == kind }
+            .min { lhs, rhs in
+                let left = abs((lhs.window.limitWindowSeconds ?? targetSeconds) - targetSeconds)
+                let right = abs((rhs.window.limitWindowSeconds ?? targetSeconds) - targetSeconds)
+                return left < right
+            }?
+            .window
+    }
+}
+
+private extension KeyedDecodingContainer {
+    func decodeFlexibleInt(forKey key: Key) -> Int? {
+        if let value = try? decodeIfPresent(Int.self, forKey: key) {
+            return value
+        }
+        if let value = try? decodeIfPresent(Double.self, forKey: key) {
+            return Int(value.rounded())
+        }
+        if let raw = try? decodeIfPresent(String.self, forKey: key),
+           let value = Double(raw.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            return Int(value.rounded())
+        }
+        return nil
     }
 }
 

@@ -89,7 +89,7 @@ swift run -c release CodexQuotaMenubar
 
 - 读取 `~/.codex/auth.json` 中的 ChatGPT OAuth token
 - 请求 `https://chatgpt.com/backend-api/wham/usage` 获取额度使用状况
-- 解析 `primary_window` 映射为 5 小时额度，将 `secondary_window` 映射为周额度
+- 按窗口时长归类额度：约 5 小时映射为 5 小时额度，约 7 天映射为周额度；不再假定 `primary_window` / `secondary_window` 的固定含义
 - 自动根据剩余额度切换不同颜色（正常绿色、偏低橙色、接近耗尽红色）
 
 **风险提示**：本工具请求的 usage 接口为 ChatGPT 网页端后端接口，非 OpenAI Platform 开放接口。该接口可能随着官方网站的更新而失效，请在信任本工具的情况下使用。

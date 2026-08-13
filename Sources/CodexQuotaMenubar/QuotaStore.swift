@@ -64,6 +64,18 @@ final class QuotaStore: ObservableObject {
     @AppStorage("barkNotifyWeeklyReset") var barkNotifyWeeklyReset = true {
         willSet { objectWillChange.send() }
     }
+    @AppStorage("telegramNotifyResetCreditsIncreased") var telegramNotifyResetCreditsIncreased = true {
+        willSet { objectWillChange.send() }
+    }
+    @AppStorage("telegramNotifyResetCreditsExpired") var telegramNotifyResetCreditsExpired = true {
+        willSet { objectWillChange.send() }
+    }
+    @AppStorage("barkNotifyResetCreditsIncreased") var barkNotifyResetCreditsIncreased = true {
+        willSet { objectWillChange.send() }
+    }
+    @AppStorage("barkNotifyResetCreditsExpired") var barkNotifyResetCreditsExpired = true {
+        willSet { objectWillChange.send() }
+    }
     @AppStorage("barkNotifiedResetIDs") private var barkNotifiedResetIDsRaw = "" {
         willSet { objectWillChange.send() }
     }
@@ -489,14 +501,59 @@ final class QuotaStore: ObservableObject {
     }
 
     private func applyResetCreditsResult(_ result: ResetCreditsState) {
+        let previousState = resetCredits
         switch result {
-        case .loaded, .loading:
+        case .loaded(let currentSnapshot):
+            resetCredits = result
+            if case .loaded(let previousSnapshot) = previousState {
+                triggerResetCreditsChangeNotifications(previous: previousSnapshot, current: currentSnapshot)
+            }
+        case .loading:
             resetCredits = result
         case .failed:
             if case .loaded = resetCredits {
                 return
             }
             resetCredits = result
+        }
+    }
+
+    private func triggerResetCreditsChangeNotifications(previous: ResetCreditsSnapshot, current: ResetCreditsSnapshot) {
+        guard let event = QuotaResetNotificationDetector.detectResetCreditsChange(
+            previous: previous,
+            current: current,
+            now: Date(),
+            lang: language
+        ) else {
+            return
+        }
+        
+        Task {
+            if telegramEnabled {
+                let shouldSend: Bool
+                switch event.kind {
+                case .increased:
+                    shouldSend = telegramNotifyResetCreditsIncreased
+                case .decreasedByExpiration:
+                    shouldSend = telegramNotifyResetCreditsExpired
+                }
+                if shouldSend {
+                    _ = await sendTelegramMessage(event.message)
+                }
+            }
+            
+            if barkEnabled {
+                let shouldSend: Bool
+                switch event.kind {
+                case .increased:
+                    shouldSend = barkNotifyResetCreditsIncreased
+                case .decreasedByExpiration:
+                    shouldSend = barkNotifyResetCreditsExpired
+                }
+                if shouldSend {
+                    _ = await sendBarkMessage(title: event.barkTitle, body: event.barkBody)
+                }
+            }
         }
     }
 

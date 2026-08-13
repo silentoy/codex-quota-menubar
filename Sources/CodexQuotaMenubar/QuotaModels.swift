@@ -109,7 +109,7 @@ extension Color {
     static let quotaCritical = Color(red: 0.72, green: 0.16, blue: 0.14)
 }
 
-enum QuotaWindowKind: String, Sendable {
+enum QuotaWindowKind: String, Sendable, Hashable {
     case fiveHour = "5 小时额度"
     case weekly = "周额度"
 

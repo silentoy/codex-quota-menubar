@@ -253,6 +253,52 @@ enum QuotaResetNotificationDetector {
         let timestamp = Int((current.resetAt ?? now).timeIntervalSince1970)
         return "\(kind.storageKey):\(timestamp):\(reason.rawValue)"
     }
+
+    static func detectResetCreditsChange(
+        previous: ResetCreditsSnapshot?,
+        current: ResetCreditsSnapshot,
+        now: Date = Date(),
+        lang: AppLanguage = .zh
+    ) -> ResetCreditsNotificationEvent? {
+        guard let previous else { return nil }
+        
+        let prevCount = previous.availableCount
+        let currCount = current.availableCount
+        
+        if currCount > prevCount {
+            return ResetCreditsNotificationEvent(
+                kind: .increased,
+                diff: currCount - prevCount,
+                currentCount: currCount,
+                lang: lang
+            )
+        } else if currCount < prevCount {
+            let currentAvailableSet = Set(current.availableCredits.map { 
+                "\($0.status):\($0.grantedAt?.timeIntervalSince1970 ?? 0):\($0.expiresAt?.timeIntervalSince1970 ?? 0)" 
+            })
+            
+            var expiredCount = 0
+            for prevCredit in previous.availableCredits {
+                let key = "\(prevCredit.status):\(prevCredit.grantedAt?.timeIntervalSince1970 ?? 0):\(prevCredit.expiresAt?.timeIntervalSince1970 ?? 0)"
+                if !currentAvailableSet.contains(key) {
+                    if let expiresAt = prevCredit.expiresAt, expiresAt <= now.addingTimeInterval(60) {
+                        expiredCount += 1
+                    }
+                }
+            }
+            
+            if expiredCount > 0 {
+                return ResetCreditsNotificationEvent(
+                    kind: .decreasedByExpiration,
+                    diff: expiredCount,
+                    currentCount: currCount,
+                    lang: lang
+                )
+            }
+        }
+        
+        return nil
+    }
 }
 
 extension QuotaWindowKind {
@@ -263,5 +309,118 @@ extension QuotaWindowKind {
         case .weekly:
             return "weekly"
         }
+    }
+}
+
+struct ResetCreditsNotificationEvent: Equatable, Sendable {
+    enum ChangeKind: String, Sendable {
+        case increased
+        case decreasedByExpiration
+    }
+    
+    let kind: ChangeKind
+    let diff: Int
+    let currentCount: Int
+    let lang: AppLanguage
+    
+    var message: String {
+        let title: String
+        let emoji: String
+        
+        if lang == .en {
+            switch kind {
+            case .increased:
+                emoji = "🚀"
+                title = "Reset Credits Increased"
+                return """
+                \(emoji) \(Self.bold(title))
+                📈 Added: \(Self.code("+\(diff)"))
+                📊 Current Available: \(Self.code("\(currentCount)"))
+                """
+            case .decreasedByExpiration:
+                emoji = "⚠️"
+                title = "Reset Credits Expired"
+                return """
+                \(emoji) \(Self.bold(title))
+                📉 Expired: \(Self.code("-\(diff)"))
+                📊 Current Available: \(Self.code("\(currentCount)"))
+                """
+            }
+        } else {
+            switch kind {
+            case .increased:
+                emoji = "🚀"
+                title = "重置次数已增加"
+                return """
+                \(emoji) \(Self.bold(title))
+                📈 增加数量：\(Self.code("+\(diff)"))
+                📊 当前可用：\(Self.code("\(currentCount) 次"))
+                """
+            case .decreasedByExpiration:
+                emoji = "⚠️"
+                title = "重置次数已过期减少"
+                return """
+                \(emoji) \(Self.bold(title))
+                📉 过期数量：\(Self.code("-\(diff)"))
+                📊 当前可用：\(Self.code("\(currentCount) 次"))
+                """
+            }
+        }
+    }
+    
+    var barkTitle: String {
+        if lang == .en {
+            switch kind {
+            case .increased:
+                return "Reset Credits Increased"
+            case .decreasedByExpiration:
+                return "Reset Credits Expired"
+            }
+        } else {
+            switch kind {
+            case .increased:
+                return "重置次数已增加"
+            case .decreasedByExpiration:
+                return "重置次数已过期"
+            }
+        }
+    }
+    
+    var barkBody: String {
+        if lang == .en {
+            switch kind {
+            case .increased:
+                return "Added \(diff) available reset credit(s). Current: \(currentCount)."
+            case .decreasedByExpiration:
+                return "\(diff) reset credit(s) expired. Current: \(currentCount)."
+            }
+        } else {
+            switch kind {
+            case .increased:
+                return "可用重置次数增加 \(diff) 次。当前可用：\(currentCount) 次。"
+            case .decreasedByExpiration:
+                return "有 \(diff) 次重置额度已过期失效。当前可用：\(currentCount) 次。"
+            }
+        }
+    }
+    
+    private static func bold(_ text: String) -> String {
+        "*\(escapeMarkdownV2(text))*"
+    }
+
+    private static func code(_ text: String) -> String {
+        "`\(text.replacingOccurrences(of: "`", with: "\\`"))`"
+    }
+
+    private static func escapeMarkdownV2(_ text: String) -> String {
+        let specialCharacters = CharacterSet(charactersIn: "_*[]()~`>#+-=|{}.!")
+        var escaped = ""
+        for scalar in text.unicodeScalars {
+            if specialCharacters.contains(scalar) {
+                escaped.append("\\")
+            }
+            escaped.append(String(scalar))
+        }
+        return escaped
     }
 }

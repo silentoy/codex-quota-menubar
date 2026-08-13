@@ -90,7 +90,7 @@ The current version is fixed to use the Codex Auth data source, which will:
 
 - Read the ChatGPT OAuth token from `~/.codex/auth.json`.
 - Request `https://chatgpt.com/backend-api/wham/usage` to fetch usage status.
-- Map `primary_window` to 5-hour quota and `secondary_window` to weekly quota.
+- Classify quota windows by duration: about 5 hours maps to the 5-hour quota, about 7 days maps to the weekly quota. The app no longer assumes a fixed meaning for `primary_window` / `secondary_window`.
 - Automatically switch colors according to the remaining percentage (green for normal, orange for low, red for critical).
 
 **Risk Warning**: The usage endpoint requested by this tool is the backend API of ChatGPT web version, rather than the public OpenAI Platform API. This interface may fail with updates to the official website. Please use it only if you trust this tool.
