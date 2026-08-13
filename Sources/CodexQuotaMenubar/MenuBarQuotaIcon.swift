@@ -13,15 +13,15 @@ enum MenuBarQuotaIcon {
 
         drawRing(
             in: NSRect(x: 2.5, y: 2.5, width: 17, height: 17),
-            percent: snapshot.fiveHour.percentRemaining,
-            level: level(for: snapshot.fiveHour.percentRemaining, lowThreshold: lowThreshold),
+            percent: snapshot.ringOuterPercentRemaining,
+            level: level(for: snapshot.ringOuterPercentRemaining, lowThreshold: lowThreshold),
             lineWidth: 3.4,
             isRefreshing: isRefreshing
         )
         drawRing(
             in: NSRect(x: 7, y: 7, width: 8, height: 8),
-            percent: snapshot.weekly.percentRemaining,
-            level: level(for: snapshot.weekly.percentRemaining, lowThreshold: lowThreshold),
+            percent: snapshot.ringInnerPercentRemaining,
+            level: level(for: snapshot.ringInnerPercentRemaining, lowThreshold: lowThreshold),
             lineWidth: 2.8,
             isRefreshing: isRefreshing
         )

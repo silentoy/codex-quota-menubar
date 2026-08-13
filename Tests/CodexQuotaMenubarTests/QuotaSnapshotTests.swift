@@ -38,6 +38,20 @@ struct QuotaSnapshotTests {
         #expect(snapshot.bottleneckRemainingPercent == nil)
     }
 
+    @Test func ringOuterFallsBackToWeeklyWhenFiveHourIsMissing() {
+        let snapshot = snapshot(fiveHour: nil, weekly: 98)
+
+        #expect(snapshot.ringOuterPercentRemaining == 98)
+        #expect(snapshot.ringInnerPercentRemaining == 98)
+    }
+
+    @Test func ringOuterPrefersFiveHourWhenBothWindowsExist() {
+        let snapshot = snapshot(fiveHour: 18, weekly: 61)
+
+        #expect(snapshot.ringOuterPercentRemaining == 18)
+        #expect(snapshot.ringInnerPercentRemaining == 61)
+    }
+
     private func snapshot(fiveHour: Int?, weekly: Int?) -> QuotaSnapshot {
         QuotaSnapshot(
             fiveHour: QuotaWindowSnapshot(kind: .fiveHour, percentRemaining: fiveHour, resetAt: nil),

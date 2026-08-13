@@ -771,6 +771,15 @@ struct QuotaSnapshot: Sendable {
         return values.min()
     }
 
+    /// Outer ring prefers the 5-hour window, and falls back to weekly when that window is absent.
+    var ringOuterPercentRemaining: Int? {
+        fiveHour.percentRemaining ?? weekly.percentRemaining
+    }
+
+    var ringInnerPercentRemaining: Int? {
+        weekly.percentRemaining
+    }
+
     var bottleneckRemainingPercent: Int? {
         percentRemaining
     }

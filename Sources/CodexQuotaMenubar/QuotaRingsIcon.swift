@@ -20,16 +20,16 @@ struct QuotaRingsIcon: View {
     private var rings: some View {
         ZStack {
             RingView(
-                percent: snapshot.fiveHour.percentRemaining,
-                level: level(for: snapshot.fiveHour.percentRemaining),
+                percent: snapshot.ringOuterPercentRemaining,
+                level: level(for: snapshot.ringOuterPercentRemaining),
                 lineWidth: style.outerLineWidth,
                 style: style
             )
             .frame(width: style.outerSize, height: style.outerSize)
 
             RingView(
-                percent: snapshot.weekly.percentRemaining,
-                level: level(for: snapshot.weekly.percentRemaining),
+                percent: snapshot.ringInnerPercentRemaining,
+                level: level(for: snapshot.ringInnerPercentRemaining),
                 lineWidth: style.innerLineWidth,
                 style: style
             )
